@@ -1,71 +1,85 @@
 import React, { useState, useEffect } from 'react';
 import { auth } from '../firebase'; 
+import { 
+  Calendar, Users, ClipboardList, 
+  Archive, Trash2, CheckCircle, PlusCircle, 
+  AlertTriangle, Check, Layers 
+} from 'lucide-react';
 
-// --- INTERNAL COMPONENT: SUCCESS MODAL ---
+// --- SUCCESS MODAL ---
 const SuccessModal = ({ message, onClose }) => {
   if (!message) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-2xl p-6 w-96 transform transition-all scale-100 text-center">
-        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-          <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-          </svg>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 text-center transform transition-all scale-100 border border-gray-100">
+        <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-green-50 mb-4 border border-green-100">
+          <Check className="h-8 w-8 text-green-600" />
         </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-2">Success</h3>
-        <p className="text-sm text-gray-500 mb-6">{message}</p>
+        <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight">Success</h3>
+        <p className="text-sm text-gray-500 mb-6 font-medium">{message}</p>
         <button 
           onClick={onClose}
-          className="w-full bg-red-900 text-white rounded-md px-4 py-2 hover:bg-red-800 transition focus:outline-none"
+          className="w-full bg-[#3B0A0A] text-white font-bold rounded-xl px-4 py-3 hover:bg-red-900 transition-all shadow-lg shadow-red-900/20 active:scale-95"
         >
-          OK
+          CONTINUE
         </button>
       </div>
     </div>
   );
 };
 
-// --- INTERNAL COMPONENT: DYNAMIC CONFIRMATION MODAL ---
+// --- CONFIRM MODAL ---
 const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
   if (!isOpen) return null;
 
   let title = "Confirm Action";
-  let message = "Are you sure you want to proceed?";
+  let message = "Are you sure?";
   let buttonColor = "bg-red-600 hover:bg-red-700"; 
+  let icon = <AlertTriangle className="h-8 w-8 text-orange-500" />;
+  let iconBg = "bg-orange-50 border-orange-100";
   let buttonText = "Confirm";
 
   if (type === 'create') {
-    title = "Confirm Batch Creation";
-    message = "Are you sure you want to create this new batch? Please verify the dates, budget, and population.";
-    buttonColor = "bg-green-600 hover:bg-green-700";
-    buttonText = "Yes, Create";
+    title = "Start New Batch?";
+    message = "This will initialize a new tracking cycle. Please verify the details.";
+    buttonColor = "bg-green-600 hover:bg-green-700 shadow-green-600/30";
+    icon = <PlusCircle className="h-8 w-8 text-green-600" />;
+    iconBg = "bg-green-50 border-green-100";
+    buttonText = "Yes, Create Batch";
   } else if (type === 'complete') {
-    title = "Confirm Completion";
-    message = "Are you sure you want to mark this batch as completed? It will be moved to the history archive.";
-    buttonColor = "bg-green-500 hover:bg-yellow-600";
-    buttonText = "Yes, Complete";
+    title = "Complete Batch?";
+    message = "This will move the batch to the archives. You won't be able to add new daily records.";
+    buttonColor = "bg-blue-600 hover:bg-blue-700 shadow-blue-600/30";
+    icon = <Archive className="h-8 w-8 text-blue-600" />;
+    iconBg = "bg-blue-50 border-blue-100";
+    buttonText = "Yes, Archive It";
   } else if (type === 'delete') {
-    title = "Confirm Deletion";
-    message = "Are you sure you want to delete this batch permanently? This action cannot be undone.";
-    buttonColor = "bg-red-600 hover:bg-red-700";
-    buttonText = "Yes, Delete";
+    title = "Delete Permanently?";
+    message = "This action cannot be undone. All expenses and sales records for this batch will be lost.";
+    buttonColor = "bg-red-600 hover:bg-red-700 shadow-red-600/30";
+    icon = <Trash2 className="h-8 w-8 text-red-600" />;
+    iconBg = "bg-red-50 border-red-100";
+    buttonText = "Yes, Delete It";
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-96">
-        <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
-        <p className="text-sm text-gray-500 mb-6">{message}</p>
-        <div className="flex justify-end gap-3">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110]">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 border border-gray-100">
+        <div className={`mx-auto flex items-center justify-center h-16 w-16 rounded-full ${iconBg} mb-4 border`}>
+          {icon}
+        </div>
+        <h3 className="text-xl font-black text-gray-800 text-center mb-2 tracking-tight">{title}</h3>
+        <p className="text-sm text-gray-500 text-center mb-8 px-4">{message}</p>
+        <div className="flex gap-3">
           <button 
             onClick={onCancel}
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition"
+            className="flex-1 bg-gray-100 text-gray-700 font-bold px-4 py-3 rounded-xl hover:bg-gray-200 transition-colors"
           >
             Cancel
           </button>
           <button 
             onClick={onConfirm}
-            className={`text-white px-4 py-2 rounded transition ${buttonColor}`}
+            className={`flex-1 text-white font-bold px-4 py-3 rounded-xl transition-all shadow-lg ${buttonColor}`}
           >
             {buttonText}
           </button>
@@ -81,7 +95,6 @@ const BatchControl = () => {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('active'); 
 
-  // --- MODAL STATES ---
   const [successMessage, setSuccessMessage] = useState('');
   
   const [confirmModal, setConfirmModal] = useState({
@@ -94,13 +107,12 @@ const BatchControl = () => {
     batchName: '',
     dateCreated: '',
     expectedCompleteDate: '',
-    startingPopulation: '',
-    vitaminBudget: ''
+    startingPopulation: ''
   });
 
   const backendUrl = "http://localhost:8000";
 
-  // --- DATA FETCHING & AUTO COMPLETE LOGIC ---
+  // --- DATA FETCHING ---
   const fetchBatches = async () => {
     try {
       setLoading(true);
@@ -116,6 +128,7 @@ const BatchControl = () => {
       if (response.ok) {
         let data = await response.json();
 
+        // Check for Auto-Complete based on Date
         const today = new Date();
         today.setHours(0, 0, 0, 0); 
 
@@ -154,10 +167,15 @@ const BatchControl = () => {
   };
 
   useEffect(() => {
-    fetchBatches();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchBatches();
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
-  // --- AUTO DATE CALCULATION ---
+  // --- HANDLERS ---
   const handleDateChange = (e) => {
     const newDate = e.target.value;
     let calculatedEndDate = formData.expectedCompleteDate; 
@@ -175,8 +193,6 @@ const BatchControl = () => {
     });
   };
 
-  // --- ACTION INITIATORS ---
-
   const requestCreate = (e) => {
     e.preventDefault();
     setConfirmModal({ isOpen: true, type: 'create', targetId: null });
@@ -190,7 +206,6 @@ const BatchControl = () => {
     setConfirmModal({ isOpen: true, type: 'delete', targetId: id });
   };
 
-  // --- EXECUTE CONFIRMED ACTION ---
   const performAction = async () => {
     const { type, targetId } = confirmModal;
     setConfirmModal({ isOpen: false, type: null, targetId: null });
@@ -211,12 +226,12 @@ const BatchControl = () => {
             dateCreated: formData.dateCreated,
             expectedCompleteDate: formData.expectedCompleteDate,
             startingPopulation: parseInt(formData.startingPopulation),
-            vitaminBudget: parseFloat(formData.vitaminBudget || 0) // Integrated budget data
+            vitaminBudget: 0 // Default to 0 since removed from UI
           })
         });
 
         if (response.ok) {
-          setFormData({ batchName: '', dateCreated: '', expectedCompleteDate: '', startingPopulation: '', vitaminBudget: '' });
+          setFormData({ batchName: '', dateCreated: '', expectedCompleteDate: '', startingPopulation: '' });
           fetchBatches();
           setSuccessMessage("Batch created successfully!"); 
         }
@@ -252,7 +267,7 @@ const BatchControl = () => {
   const currentList = view === 'active' ? activeBatches : historyBatches;
 
   return (
-    <div className="bg-gray-50 min-h-full font-sans text-gray-800 relative">
+    <div className="bg-gray-50 min-h-full font-sans text-gray-800 p-4">
       
       {/* --- MODALS --- */}
       <SuccessModal 
@@ -266,78 +281,90 @@ const BatchControl = () => {
         onConfirm={performAction} 
       />
 
-      {/* --- LAYOUT GRID --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* --- LEFT PANEL: FORM --- */}
-        <div className="lg:col-span-1 min-w-[300px]">
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
-            <div className="bg-red-900 p-4">
-              <h2 className="text-white font-bold text-lg tracking-wide">Initialize Batch</h2>
+        {/* --- LEFT PANEL: CREATE BATCH FORM --- */}
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-4">
+            
+            {/* Header */}
+            <div className="bg-[#3B0A0A] p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
+                  <PlusCircle className="text-white h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-white font-bold text-lg tracking-wide">Initialize Batch</h2>
+                  <p className="text-white/60 text-xs">Start a new production cycle</p>
+                </div>
+              </div>
             </div>
             
-            <form onSubmit={requestCreate} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Batch Identifier</label>
-                <input 
-                  type="text" 
-                  required
-                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-900 focus:border-red-900 block p-2.5 outline-none transition-colors"
-                  value={formData.batchName}
-                  onChange={(e) => setFormData({...formData, batchName: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Start Date</label>
+            <form onSubmit={requestCreate} className="p-6 space-y-5">
+              
+              {/* Batch Name */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block pl-1">Batch Identifier</label>
+                <div className="relative">
+                  <ClipboardList className="absolute left-3 top-3 text-gray-400 h-5 w-5" />
                   <input 
-                    type="date" 
+                    type="text" 
                     required
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-900 focus:border-red-900 block p-2.5 outline-none"
-                    value={formData.dateCreated}
-                    onChange={handleDateChange}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Est. Harvest</label>
-                  <input 
-                    type="date" 
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-900 focus:border-red-900 block p-2.5 outline-none"
-                    value={formData.expectedCompleteDate}
-                    onChange={(e) => setFormData({...formData, expectedCompleteDate: e.target.value})}
+                    placeholder="Batch Name"
+                    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-red-900 focus:border-red-900 block pl-10 p-3 outline-none font-bold"
+                    value={formData.batchName}
+                    onChange={(e) => setFormData({...formData, batchName: e.target.value})}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Initial Population</label>
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block pl-1">Start Date</label>
+                  <div className="relative">
+                    <input 
+                      type="date" 
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-red-900 focus:border-red-900 block p-3 outline-none font-medium"
+                      value={formData.dateCreated}
+                      onChange={handleDateChange}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block pl-1">Target Harvest</label>
+                  <div className="relative">
+                    <input 
+                      type="date" 
+                      required
+                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-red-900 focus:border-red-900 block p-3 outline-none font-medium"
+                      value={formData.expectedCompleteDate}
+                      onChange={(e) => setFormData({...formData, expectedCompleteDate: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Population (Full Width Now) */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block pl-1">Population</label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
                   <input 
                     type="number" 
                     required
-                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-900 focus:border-red-900 block p-2.5 outline-none"
+                    placeholder="0"
+                    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-red-900 focus:border-red-900 block pl-9 p-3 outline-none font-bold"
                     value={formData.startingPopulation}
                     onChange={(e) => setFormData({...formData, startingPopulation: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Vitamins Budget (₱)</label>
-                  <input 
-                    type="number" 
-                    required
-                    placeholder=""
-                    className="w-fullbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-900 focus:border-red-900 block p-2.5 outline-none"
-                    value={formData.vitaminBudget}
-                    onChange={(e) => setFormData({...formData, vitaminBudget: e.target.value})}
                   />
                 </div>
               </div>
 
               <button 
                 type="submit" 
-                className="w-full mt-4 text-white bg-red-900 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-3 text-center transition-all shadow-md hover:shadow-lg"
+                className="w-full mt-2 text-white bg-[#3B0A0A] hover:bg-red-900 focus:ring-4 focus:ring-red-300 font-bold rounded-xl text-sm px-5 py-4 text-center transition-all shadow-lg hover:shadow-xl active:scale-95 uppercase tracking-wide"
               >
                 Create Batch Record
               </button>
@@ -345,84 +372,98 @@ const BatchControl = () => {
           </div>
         </div>
 
-        {/* --- RIGHT PANEL: LIST --- */}
+        {/* --- RIGHT PANEL: BATCH LIST --- */}
         <div className="lg:col-span-2">
           
-          <div className="flex border-b border-gray-200 mb-6">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 mb-6 gap-6">
             <button 
               onClick={() => setView('active')}
-              className={`pb-3 pr-6 text-sm font-bold uppercase tracking-wide transition-colors border-b-2 ${view === 'active' ? 'border-red-900 text-red-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+              className={`pb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide transition-all border-b-4 ${view === 'active' ? 'border-[#3B0A0A] text-[#3B0A0A]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
             >
-              Active Operations
+              <CheckCircle size={16} /> Active Operations
             </button>
             <button 
               onClick={() => setView('history')}
-              className={`pb-3 px-6 text-sm font-bold uppercase tracking-wide transition-colors border-b-2 ${view === 'history' ? 'border-red-900 text-red-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+              className={`pb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide transition-all border-b-4 ${view === 'history' ? 'border-[#3B0A0A] text-[#3B0A0A]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
             >
-              Archived History
+              <Archive size={16} /> Archived History
             </button>
           </div>
 
           {loading && (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-900"></div>
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#3B0A0A]"></div>
             </div>
           )}
 
           {!loading && currentList.length === 0 && (
-            <div className="bg-white rounded-lg border border-dashed border-gray-300 p-12 text-center">
-              <p className="text-gray-400 font-medium">No records found in {view} view.</p>
+            <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-16 text-center">
+              <div className="mx-auto w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <ClipboardList className="text-gray-300 h-8 w-8" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-400">No Records Found</h3>
+              <p className="text-sm text-gray-400 mt-1">There are no {view} batches at the moment.</p>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {currentList.map((batch) => (
-              <div key={batch.id} className="group bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden">
+              <div key={batch.id} className="group bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden">
                 
-                <div className="p-5">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-bold text-gray-900 group-hover:text-red-900 transition-colors">
-                      {batch.batchName}
-                    </h3>
-                    <span className={`text-xs px-2 py-1 rounded-full font-semibold uppercase ${batch.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                      {batch.status}
-                    </span>
+                {/* Card Body */}
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${batch.status === 'active' ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <Layers size={20} className={batch.status === 'active' ? 'text-green-700' : 'text-gray-500'} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-gray-800 group-hover:text-[#3B0A0A] transition-colors leading-none">
+                          {batch.batchName}
+                        </h3>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${batch.status === 'active' ? 'text-green-600' : 'text-gray-400'}`}>
+                          {batch.status}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex justify-between border-b border-gray-100 pb-1">
-                      <span>Population</span>
-                      <span className="font-semibold text-gray-900">{batch.startingPopulation}</span>
+                  {/* Population Only - Budget Removed */}
+                  <div className="mb-4">
+                    <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase block">Population</span>
+                      <span className="text-lg font-black text-gray-800">{batch.startingPopulation}</span>
                     </div>
-                    <div className="flex justify-between border-b border-gray-100 pb-1">
-                      <span className="text-red-900 font-bold">Vitamins Budget</span>
-                      <span className="font-bold text-red-900">₱{batch.vitaminBudget?.toLocaleString() || '0'}</span>
+                  </div>
+
+                  <div className="pt-4 border-t border-gray-100 flex justify-between items-center text-xs">
+                    <div>
+                      <span className="text-gray-400 font-bold mr-2">START:</span>
+                      <span className="font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded">{batch.dateCreated}</span>
                     </div>
-                    <div className="flex justify-between border-b border-gray-100 pb-1">
-                      <span>Start Date</span>
-                      <span className="font-mono">{batch.dateCreated}</span>
-                    </div>
-                    <div className="flex justify-between pt-1">
-                      <span>Target Harvest</span>
-                      <span className="font-mono text-red-900 font-medium">{batch.expectedCompleteDate || "N/A"}</span>
+                    <div>
+                      <span className="text-gray-400 font-bold mr-2">END:</span>
+                      <span className="font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded">{batch.expectedCompleteDate || "N/A"}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex gap-3">
+                {/* Card Actions */}
+                <div className="bg-gray-50 p-4 border-t border-gray-100 flex gap-3">
                    {view === 'active' && (
                     <button 
                       onClick={() => requestComplete(batch.id)}
-                      className="flex-1 text-xs font-bold text-white bg-green-600 hover:bg-green-700 py-2 rounded shadow-sm transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 py-3 rounded-xl shadow-sm transition-colors uppercase tracking-wide"
                     >
-                      MARK COMPLETE
+                      <CheckCircle size={14} /> Finish
                     </button>
                   )}
                   <button 
                     onClick={() => requestDelete(batch.id)}
-                    className="flex-1 text-xs font-bold text-red-950 bg-red-100 hover:bg-red-200 py-2 rounded shadow-sm transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 py-3 rounded-xl shadow-sm transition-colors uppercase tracking-wide"
                   >
-                    DELETE
+                    <Trash2 size={14} /> Delete
                   </button>
                 </div>
 

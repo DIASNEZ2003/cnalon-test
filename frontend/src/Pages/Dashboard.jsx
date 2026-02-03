@@ -5,16 +5,11 @@ import { getDatabase, ref, update, get } from "firebase/database";
 import { supabase } from "../supabaseClient";
 
 import RealDashboard from "../Dashboard/RealDashboard";  
-
 import User from "../Dashboard/User";  
-
 import BatchControl from "../Dashboard/BatchControl";
-
 import Records from "../Dashboard/Records";
-
 import Expenses from "../Dashboard/Expenses";
-
-import Sales from "../Dashboard/Sales";       // Fixed Import
+import Sales from "../Dashboard/Sales";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("Dashboard");
@@ -22,6 +17,10 @@ const Dashboard = () => {
   const [fullName, setFullName] = useState("Boss"); 
   const [profileImage, setProfileImage] = useState(null);
   const [uploading, setUploading] = useState(false);
+  
+  // Dynamic Weather State
+  const [weatherData, setWeatherData] = useState({ temp: "--", code: null, unit: "°C" });
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const savedState = localStorage.getItem("isSidebarOpen");
     return savedState !== null ? JSON.parse(savedState) : true;
@@ -40,11 +39,44 @@ const Dashboard = () => {
   const navItems = [
     { name: "Dashboard", icon: "/dashboard.png" },
     { name: "Batch Control", icon: "/batch.png" },      
-     { name: "Manage User", icon: "/user.png" },
+    { name: "Manage User", icon: "/user.png" },
     { name: "Sales", icon: "/sales.png" },             
     { name: "Expenses", icon: "/expenses.png" },       
     { name: "Records", icon: "/folder.png" },          
   ];
+
+  // --- HELPER: GET WEATHER UI DETAILS ---
+  const getWeatherDetails = (code) => {
+    // WMO Weather interpretation codes
+    if (code === 0) return { icon: "☀️", label: "Sunny", color: "text-orange-600", bg: "bg-orange-50" };
+    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Cloudy", color: "text-yellow-600", bg: "bg-yellow-50" };
+    if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy", color: "text-blue-600", bg: "bg-blue-50" };
+    if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-600", bg: "bg-indigo-50" };
+    if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-600", bg: "bg-purple-50" };
+    
+    // Default fallback
+    return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50" };
+  };
+
+  // --- FETCH WEATHER ON MOUNT ---
+  useEffect(() => {
+    const fetchWeather = async () => {
+      try {
+        const response = await fetch("http://localhost:8000/get-temperature");
+        const data = await response.json();
+        setWeatherData({
+          temp: data.temperature,
+          code: data.weatherCode,
+          unit: data.unit
+        });
+      } catch (err) {
+        console.error("Weather fetch error:", err);
+      }
+    };
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 600000); // 10 mins
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -122,7 +154,6 @@ const Dashboard = () => {
       <aside 
         className={`${isSidebarOpen ? 'w-72' : 'w-24'} bg-red-900 text-white flex flex-col shadow-2xl z-20 transition-all duration-300 relative h-full`}
       >
-        {/* Toggle Button */}
         <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className={`absolute z-30 p-1 rounded hover:bg-red-800 transition-all duration-300 
@@ -135,7 +166,6 @@ const Dashboard = () => {
             />
         </button>
 
-        {/* --- PROFILE SECTION (Fixed at Top) --- */}
         <div className={`flex-shrink-0 flex flex-col items-center justify-center border-b border-red-800 bg-red-950 relative transition-all duration-300 
             ${isSidebarOpen ? 'pt-3 pb-8 px-4' : 'pt-16 pb-6 px-2'}`}>
             
@@ -183,7 +213,6 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* --- NAVIGATION ITEMS (Scrollable Middle) --- */}
         <nav className="flex-1 px-3 py-6 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-red-800 scrollbar-track-transparent">
           {navItems.map((item) => (
             <button
@@ -206,7 +235,6 @@ const Dashboard = () => {
           ))}
         </nav>
 
-        {/* --- LOGOUT SECTION (Fixed at Bottom) --- */}
         <div className="flex-shrink-0 p-4 border-t border-red-800 bg-red-950">
           <button
             onClick={() => setShowLogoutModal(true)}
@@ -226,17 +254,34 @@ const Dashboard = () => {
 
       {/* --- MAIN CONTENT AREA --- */}
       <main className="flex-1 flex flex-col overflow-hidden relative bg-gray-50">
-        <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8 z-10 flex-shrink-0">
+        <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8 z-10 flex-shrink-0 border-b border-gray-100">
           <h1 className="text-2xl font-extrabold text-red-900 tracking-tight">
             {activeTab}
           </h1>
+
+          {/* COMPACT WEATHER DISPLAY (MODIFIED SIZE) */}
+          {weatherData.temp !== "N/A" && (
+            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm ${getWeatherDetails(weatherData.code).bg}`}>
+              <span className="text-xl animate-bounce-slow">
+                {getWeatherDetails(weatherData.code).icon}
+              </span>
+              <div className="flex flex-col">
+                <span className={`text-[9px] font-bold uppercase tracking-tight ${getWeatherDetails(weatherData.code).color}`}>
+                  {getWeatherDetails(weatherData.code).label}
+                </span>
+                <span className="font-bold text-sm text-gray-800 leading-none">
+                  {weatherData.temp}{weatherData.unit}
+                </span>
+              </div>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 animate-fade-in-down">
           {/* --- ROUTING LOGIC --- */}
           {activeTab === "Dashboard" && <RealDashboard />}
           {activeTab === "Batch Control" && <BatchControl />}
-            {activeTab === "Manage User" && <User />}
+          {activeTab === "Manage User" && <User />}
           {activeTab === "Sales" && <Sales />}
           {activeTab === "Expenses" && <Expenses />}
           {activeTab === "Records" && <Records />}
@@ -305,6 +350,11 @@ const Dashboard = () => {
         .animate-fade-in-down { animation: fade-in-down 0.4s ease-out forwards; }
         @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
+        @keyframes bounce-slow { 
+          0%, 100% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.8,0,1,1); } 
+          50% { transform: none; animation-timing-function: cubic-bezier(0,0,0.2,1); } 
+        }
+        .animate-bounce-slow { animation: bounce-slow 4s infinite; }
       `}</style>
     </div>
   );
