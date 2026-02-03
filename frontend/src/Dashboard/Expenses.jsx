@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { auth } from '../firebase';
 import { 
   ShoppingBag, Calendar, DollarSign, Tag, 
   FileText, Hash, Edit2, Trash2, PlusCircle, 
-  Check, AlertTriangle, Layers 
+  Check, AlertTriangle, Layers, User, Banknote
 } from 'lucide-react';
 
 // --- SUCCESS MODAL ---
@@ -78,7 +78,7 @@ const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
   );
 };
 
-// --- FEED TYPE MODAL (For History List) ---
+// --- FEED TYPE MODAL ---
 const FeedTypeModal = ({ isOpen, onClose, onSelect }) => {
   if (!isOpen) return null;
   return (
@@ -102,9 +102,9 @@ const FeedTypeModal = ({ isOpen, onClose, onSelect }) => {
   );
 };
 
-// --- MAIN COMPONENT ---
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
+  const [usersList, setUsersList] = useState([]); 
   const [activeBatchId, setActiveBatchId] = useState(null); 
   const [successMessage, setSuccessMessage] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, targetId: null });
@@ -115,7 +115,7 @@ const Expenses = () => {
   
   const [formData, setFormData] = useState({ 
     category: 'Feeds', 
-    feedType: 'Booster', // Internal default, hidden from UI form
+    feedType: 'Booster', 
     itemName: '', 
     description: '', 
     amount: '', 
@@ -127,21 +127,29 @@ const Expenses = () => {
 
   const backendUrl = "http://localhost:8000";
 
+  const fetchSystemUsers = async (token) => {
+    try {
+      const res = await fetch(`${backendUrl}/get-users`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(data);
+      }
+    } catch (err) { console.error("Error fetching users:", err); }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       const user = auth.currentUser;
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+      if (!user) { setLoading(false); return; }
       const token = await user.getIdToken();
-      
+      fetchSystemUsers(token);
       const batchRes = await fetch(`${backendUrl}/get-batches`, { headers: { "Authorization": `Bearer ${token}` }});
       if (batchRes.ok) {
         const batches = await batchRes.json();
         const active = batches.find(b => b.status === 'active');
-        
         if (active) {
           setActiveBatchId(active.id);
           const expRes = await fetch(`${backendUrl}/get-expenses/${active.id}`, { headers: { "Authorization": `Bearer ${token}` }});
@@ -153,11 +161,7 @@ const Expenses = () => {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchData();
-      } else {
-        setLoading(false);
-      }
+      if (user) fetchData(); else setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -166,34 +170,31 @@ const Expenses = () => {
     const newCat = e.target.value;
     let newSuffix = 'kgs';
     let newFeedType = '';
+    let newItemName = formData.itemName;
 
-    if (newCat === 'Feeds') {
-        newFeedType = 'Booster'; 
-    } else if (newCat === 'Vitamins') {
-        newSuffix = 'g';
-    } else if (newCat === 'Items') {
-        newSuffix = 'pcs';
-    } else if (newCat === 'Salary') {
-        newSuffix = 'month';
+    if (newCat === 'Feeds') { newFeedType = 'Booster'; } 
+    else if (newCat === 'Vitamins') { newSuffix = 'g'; } 
+    else if (newCat === 'Items') { newSuffix = ''; } 
+    else if (newCat === 'Salary') { 
+        newSuffix = 'month'; 
+        newItemName = ''; 
     }
     
-    setFormData({ ...formData, category: newCat, suffix: newSuffix, feedType: newFeedType });
+    setFormData({ ...formData, category: newCat, suffix: newSuffix, feedType: newFeedType, itemName: newItemName, unitValue: newCat === 'Items' ? '1' : formData.unitValue });
   };
 
   const handleAction = async () => {
     const { type, targetId } = confirmModal;
     setConfirmModal({ isOpen: false, type: null, targetId: null });
-
-    if (!activeBatchId && type === 'create') {
-        alert("No active batch found!");
-        return;
-    }
+    if (!activeBatchId && type === 'create') return;
 
     try {
       const user = auth.currentUser;
       const token = await user.getIdToken();
       
-      const totalQuantity = (parseFloat(formData.count) || 0) * (parseFloat(formData.unitValue) || 1);
+      // LOGIC: If Items or Salary, unitValue is implicitly 1 so only Count matters
+      const isCountOnly = formData.category === 'Salary' || formData.category === 'Items';
+      const qty = isCountOnly ? (parseFloat(formData.count) || 1) : (parseFloat(formData.count) || 0) * (parseFloat(formData.unitValue) || 1);
       
       if (type === 'create') {
         const url = editMode ? `${backendUrl}/edit-expense` : `${backendUrl}/add-expense`;
@@ -202,44 +203,33 @@ const Expenses = () => {
         const body = {
            batchId: activeBatchId,
            category: formData.category,
-           // Use internal default if Feeds, otherwise null
            feedType: formData.category === 'Feeds' ? formData.feedType : null,
            itemName: formData.itemName,
            description: formData.description,
            amount: formData.amount,
            date: formData.date,
-           quantity: totalQuantity,
+           quantity: qty,
            unit: formData.suffix 
         };
         
         if(editMode) body.expenseId = editMode;
-
         const response = await fetch(url, {
-          method: method, 
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify(body)
         });
 
         if (response.ok) {
           setSuccessMessage(editMode ? "Record Updated!" : "Expense Recorded!");
-          setFormData({ 
-              category: 'Feeds', feedType: 'Booster', itemName: '', description: '', amount: '', 
-              count: '1', unitValue: '', suffix: 'kgs', 
-              date: new Date().toISOString().split('T')[0] 
-          });
+          setFormData({ category: 'Feeds', feedType: 'Booster', itemName: '', description: '', amount: '', count: '1', unitValue: '', suffix: 'kgs', date: new Date().toISOString().split('T')[0] });
           setEditMode(null); fetchData();
         }
       } else if (type === 'delete') {
-        await fetch(`${backendUrl}/delete-expense/${activeBatchId}/${targetId}`, { 
-            method: "DELETE", 
-            headers: { "Authorization": `Bearer ${token}` }
-        });
+        await fetch(`${backendUrl}/delete-expense/${activeBatchId}/${targetId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` }});
         setSuccessMessage("Record Deleted!"); fetchData();
       }
     } catch (e) { alert("Action failed"); }
   };
 
-  // --- QUICK SET CATEGORY (For History List) ---
   const quickSetCategory = async (feedType) => {
     const expenseId = feedModal.targetId;
     setFeedModal({ isOpen: false, targetId: null });
@@ -262,8 +252,8 @@ const Expenses = () => {
         itemName: item.itemName, 
         description: item.description || '', 
         amount: item.amount, 
-        count: '1', 
-        unitValue: item.quantity, 
+        count: item.category === 'Items' ? item.quantity : '1', 
+        unitValue: item.category === 'Items' ? '1' : item.quantity, 
         suffix: item.unit, 
         date: item.date 
     });
@@ -280,35 +270,25 @@ const Expenses = () => {
       <FeedTypeModal isOpen={feedModal.isOpen} onClose={() => setFeedModal({isOpen: false, targetId: null})} onSelect={quickSetCategory} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* --- LEFT PANEL: FORM --- */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-4">
-            
             <div className={`p-5 ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
-                  <PlusCircle className="text-white h-6 w-6" />
-                </div>
+                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm"><PlusCircle className="text-white h-6 w-6" /></div>
                 <div>
                   <h2 className="text-white font-bold text-lg tracking-wide">{editMode ? 'Edit Record' : 'New Expense'}</h2>
-                  <p className="text-white/60 text-xs">Record spending details</p>
+                  <p className="text-white/60 text-xs uppercase font-bold tracking-tighter">Financial Log</p>
                 </div>
               </div>
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); setConfirmModal({isOpen: true, type: 'create'}); }} className="p-6 space-y-4">
               
-              {/* Category */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Category</label>
                 <div className="relative">
                   <Tag className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                  <select 
-                    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold" 
-                    value={formData.category} 
-                    onChange={handleCategoryChange}
-                  >
+                  <select className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] block pl-10 p-3 outline-none font-bold" value={formData.category} onChange={handleCategoryChange}>
                     <option value="Feeds">Feeds</option>
                     <option value="Vitamins">Vitamins</option>
                     <option value="Items">Items</option>
@@ -317,78 +297,66 @@ const Expenses = () => {
                 </div>
               </div>
 
-              {/* FEED STAGE SELECTOR REMOVED FROM HERE */}
-
-              {/* Item Name */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Item Name</label>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
+                  {formData.category === 'Salary' ? 'Select Staff' : 'Item Name'}
+                </label>
                 <div className="relative">
-                  <FileText className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                  <input 
-                    type="text" required 
-                    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold" 
-                    value={formData.itemName} 
-                    onChange={(e) => setFormData({...formData, itemName: e.target.value})} 
-                  />
+                  {formData.category === 'Salary' ? (
+                    <>
+                      <User className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+                      <select required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})}>
+                        <option value="">Choose Staff Member...</option>
+                        {usersList.map((u) => <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+                      <input type="text" required placeholder="e.g. Chicken Wire" className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})} />
+                    </>
+                  )}
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-3">
-                {/* Quantity */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Count (Qty)</label>
-                  <div className="relative">
-                    <Hash className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                    <input 
-                      type="number" required 
-                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold" 
-                      value={formData.count} 
-                      onChange={(e) => setFormData({...formData, count: e.target.value})} 
-                    />
+              <div className={`grid gap-3 ${formData.category === 'Items' || formData.category === 'Salary' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                {formData.category !== 'Salary' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Quantity</label>
+                    <div className="relative">
+                      <Hash className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+                      <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.count} onChange={(e) => setFormData({...formData, count: e.target.value})} />
+                    </div>
                   </div>
-                </div>
-                
-                {/* Weight / Unit */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Size / Unit</label>
-                  <div className="relative flex">
-                    <input 
-                        type="number" required 
-                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-l-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block p-3 outline-none font-bold" 
-                        value={formData.unitValue} 
-                        onChange={(e) => setFormData({...formData, unitValue: e.target.value})} 
-                    />
-                    <span className="bg-gray-200 text-gray-600 font-bold p-3 rounded-r-xl text-xs border-y border-r border-gray-200 flex items-center justify-center min-w-[3.5rem]">
-                        {formData.suffix}
-                    </span>
+                )}
+
+                {/* MODIFIED: Completely Hide "Size / Unit" section for Items and Salary */}
+                {formData.category !== 'Salary' && formData.category !== 'Items' && (
+                  <div className="space-y-1 animate-fade-in">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Size / Unit</label>
+                    <div className="relative flex">
+                      <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-l-xl block p-3 outline-none font-bold" value={formData.unitValue} onChange={(e) => setFormData({...formData, unitValue: e.target.value})} />
+                      <span className="bg-gray-200 text-gray-600 font-bold p-3 rounded-r-xl text-xs border-y border-r border-gray-200 flex items-center justify-center min-w-[3.5rem] uppercase">{formData.suffix}</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Price & Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Price / Unit</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
+                    {formData.category === 'Salary' ? 'Monthly Pay' : 'Price / Unit'}
+                  </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                    <input 
-                      type="number" required 
-                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold" 
-                      value={formData.amount} 
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})} 
-                    />
+                    {formData.category === 'Salary' ? <Banknote className="absolute left-3 top-3 text-gray-400 h-4 w-4" /> : <DollarSign className="absolute left-3 top-3 text-gray-400 h-4 w-4" />}
+                    <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Date</label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                    <input 
-                      type="date" required 
-                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-medium" 
-                      value={formData.date} 
-                      onChange={(e) => setFormData({...formData, date: e.target.value})} 
-                    />
+                    <input type="date" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-medium" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} />
                   </div>
                 </div>
               </div>
@@ -398,29 +366,19 @@ const Expenses = () => {
               </button>
               
               {editMode && (
-                <button type="button" onClick={() => { setEditMode(null); setFormData({ category: 'Feeds', feedType: 'Booster', itemName: '', description: '', amount: '', count: '1', unitValue: '', suffix: 'kgs', date: new Date().toISOString().split('T')[0] }); }} className="w-full text-xs font-bold text-gray-500 hover:text-[#3B0A0A] text-center mt-2">
-                  CANCEL EDITING
-                </button>
+                <button type="button" onClick={() => { setEditMode(null); setFormData({ category: 'Feeds', feedType: 'Booster', itemName: '', description: '', amount: '', count: '1', unitValue: '', suffix: 'kgs', date: new Date().toISOString().split('T')[0] }); }} className="w-full text-xs font-bold text-gray-500 hover:text-[#3B0A0A] text-center mt-2 uppercase tracking-tighter">Cancel Edit</button>
               )}
             </form>
           </div>
         </div>
 
-        {/* --- RIGHT PANEL: HISTORY ONLY (No Forecast) --- */}
         <div className="lg:col-span-2">
-          
           <div className="flex justify-between items-end border-b border-gray-200 mb-6 pb-4">
             <div>
-              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A] mb-3">
-                <ShoppingBag className="h-5 w-5" /> Batch Expenses
-              </h2>
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A] mb-3"><ShoppingBag className="h-5 w-5" /> Batch Expenses</h2>
               <div className="flex flex-wrap gap-2">
                 {['All', 'Feeds', 'Vitamins', 'Items', 'Salary'].map(cat => (
-                  <button 
-                    key={cat} 
-                    onClick={() => setFilter(cat)} 
-                    className={`text-[10px] font-bold px-4 py-1.5 rounded-full transition-all border ${filter === cat ? 'bg-[#3B0A0A] text-white border-[#3B0A0A]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
-                  >
+                  <button key={cat} onClick={() => setFilter(cat)} className={`text-[10px] font-bold px-4 py-1.5 rounded-full transition-all border ${filter === cat ? 'bg-[#3B0A0A] text-white border-[#3B0A0A]' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}>
                     {cat}
                   </button>
                 ))}
@@ -433,57 +391,34 @@ const Expenses = () => {
           </div>
 
           <div className="space-y-4">
-            {expenses.length === 0 ? <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center text-gray-400 font-bold">No expenses recorded yet.</div> : filteredExpenses.map((item) => (
+            {expenses.length === 0 ? <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center text-gray-400 font-bold uppercase tracking-tighter">No Expenses Logged</div> : filteredExpenses.map((item) => (
               <div key={item.id} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col md:flex-row justify-between items-center gap-4 overflow-hidden">
-                
                 <div className="p-5 flex-1 w-full">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[10px] font-bold text-white px-2 py-1 rounded-md uppercase tracking-wider ${item.category === 'Feeds' ? 'bg-amber-600' : 'bg-purple-600'}`}>
-                        {item.category}
-                    </span>
+                    <span className={`text-[10px] font-bold text-white px-2 py-1 rounded-md uppercase tracking-wider ${item.category === 'Feeds' ? 'bg-amber-600' : item.category === 'Salary' ? 'bg-blue-600' : 'bg-purple-600'}`}>{item.category}</span>
                     {item.feedType && <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-md uppercase tracking-wider">{item.feedType}</span>}
-                    <span className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded-md text-gray-500 flex items-center gap-1">
-                        <Calendar size={10} /> {item.date}
-                    </span>
+                    <span className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded-md text-gray-500 flex items-center gap-1"><Calendar size={10} /> {item.date}</span>
                   </div>
-                  
                   <div className="flex justify-between items-start">
                       <div>
                         <h3 className="font-black text-gray-800 text-lg uppercase tracking-tight leading-none mb-1">{item.itemName}</h3>
                         <p className="text-xs font-bold text-gray-400">
-                            {item.quantity}<span className="text-[10px] ml-0.5">{item.unit}</span>
+                            {item.quantity}
+                            {/* MODIFIED: Hide unit suffix for Items in list */}
+                            {item.category !== 'Items' && <span className="text-[10px] ml-0.5">{item.unit}</span>}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-black text-[#3B0A0A]">₱{(parseFloat(item.quantity || 0) * parseFloat(item.amount || 0)).toLocaleString()}</p>
-                      </div>
+                      <div className="text-right"><p className="text-lg font-black text-[#3B0A0A]">₱{(parseFloat(item.quantity || 0) * parseFloat(item.amount || 0)).toLocaleString()}</p></div>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 p-4 border-t md:border-t-0 md:border-l border-gray-100 flex md:flex-col gap-2 w-full md:w-auto">
-                  {/* RESTORED: Set Type Button */}
                   {item.category === 'Feeds' && (
-                    <button 
-                        onClick={() => setFeedModal({ isOpen: true, targetId: item.id })} 
-                        className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-green-600 bg-green-50 hover:bg-green-100 py-2 rounded-lg transition-colors uppercase"
-                    >
-                        <Layers size={12} /> Set Type
-                    </button>
+                    <button onClick={() => setFeedModal({ isOpen: true, targetId: item.id })} className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-green-600 bg-green-50 hover:bg-green-100 py-2 rounded-lg transition-colors uppercase"><Layers size={12} /> Set Type</button>
                   )}
-                  <button 
-                    onClick={() => startEdit(item)} 
-                    className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 py-2 rounded-lg transition-colors uppercase"
-                  >
-                    <Edit2 size={12} /> Edit
-                  </button>
-                  <button 
-                    onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: item.id })} 
-                    className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition-colors uppercase"
-                  >
-                    <Trash2 size={12} /> Delete
-                  </button>
+                  <button onClick={() => startEdit(item)} className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 py-2 rounded-lg transition-colors uppercase"><Edit2 size={12} /> Edit</button>
+                  <button onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: item.id })} className="flex-1 md:w-24 flex items-center justify-center gap-1 text-[10px] font-black text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition-colors uppercase"><Trash2 size={12} /> Delete</button>
                 </div>
-
               </div>
             ))}
           </div>

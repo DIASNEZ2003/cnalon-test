@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import time
-import httpx  # For fetching weather data
+import httpx
 
 # ---------------------------------------------------------
 # 1. SETUP & INITIALIZATION
@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# 2. DATA MODELS (SCHEMAS)
+# 2. DATA MODELS (SCHEMAS) - ALL PRESERVED
 # ---------------------------------------------------------
 
 class BatchSchema(BaseModel):
@@ -107,10 +107,57 @@ class UpdateFeedCategorySchema(BaseModel):
     feedType: str 
 
 # ---------------------------------------------------------
-# 3. ENDPOINTS
+# 3. AUTHENTICATION & LOGIN (FLAT STRUCTURE & ADMIN CHECK)
 # ---------------------------------------------------------
 
-# --- USER MANAGEMENT ---
+@app.post("/register-user")
+async def register_user(data: dict, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized: No token provided")
+    
+    token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        uid = decoded_token['uid']
+
+        # FIXED: Removed /profile for a FLAT structure and set role to ADMIN
+        user_ref = db.reference(f'users/{uid}')
+        user_ref.set({
+            "firstName": data.get("firstName"),
+            "lastName": data.get("lastName"),
+            "fullName": f"{data.get('firstName')} {data.get('lastName')}",
+            "username": data.get("username"),
+            "role": "admin",
+            "status": "online",
+            "dateCreated": int(time.time() * 1000)
+        })
+        return {"status": "success", "uid": uid}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/verify-login")
+async def verify_login(authorization: str = Header(None)):
+    """
+    Checks if the user logging in has the ADMIN role. 
+    If not, access is denied.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    token = authorization.split("Bearer ")[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        uid = decoded_token['uid']
+        
+        # Get data from flat structure
+        user_data = db.reference(f'users/{uid}').get()
+        
+        if not user_data or user_data.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Access denied: Admin only.")
+            
+        return {"status": "success", "user": user_data}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid session")
 
 @app.post("/admin-create-user")
 async def admin_create_user(data: UserRegisterSchema, authorization: str = Header(None)):
@@ -121,8 +168,8 @@ async def admin_create_user(data: UserRegisterSchema, authorization: str = Heade
             password=data.password,
             display_name=data.username
         )
-        
-        user_ref = db.reference(f'users/{user_record.uid}/profile')
+        # FIXED: Removed /profile for a FLAT structure
+        user_ref = db.reference(f'users/{user_record.uid}')
         user_ref.set({
             "firstName": data.firstName,
             "lastName": data.lastName,
@@ -132,7 +179,6 @@ async def admin_create_user(data: UserRegisterSchema, authorization: str = Heade
             "status": "offline",
             "dateCreated": int(time.time() * 1000)
         })
-        
         return {"status": "success", "uid": user_record.uid}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -145,10 +191,9 @@ async def get_users(authorization: str = Header(None)):
         users_list = []
         if snapshot:
             for uid, data in snapshot.items():
-                if isinstance(data, dict) and 'profile' in data:
-                    user_info = data['profile']
-                    user_info['uid'] = uid
-                    users_list.append(user_info)
+                # FIXED: Reads directly from UID (Flat structure)
+                data['uid'] = uid
+                users_list.append(data)
         return users_list
     except Exception as e:
         return []
@@ -162,8 +207,9 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
-# --- BATCH MANAGEMENT ---
+# ---------------------------------------------------------
+# 4. BATCH MANAGEMENT - ALL PRESERVED
+# ---------------------------------------------------------
 
 @app.post("/create-batch")
 async def create_batch(data: BatchSchema, authorization: str = Header(None)):
@@ -228,7 +274,9 @@ async def delete_batch(batch_id: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-# --- MESSAGING ---
+# ---------------------------------------------------------
+# 5. MESSAGING - ALL PRESERVED
+# ---------------------------------------------------------
 
 @app.post("/admin-send-message")
 async def admin_send_message(data: MessageSchema, authorization: str = Header(None)):
@@ -260,7 +308,9 @@ async def admin_delete_message(data: DeleteMessageSchema, authorization: str = H
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- EXPENSES ---
+# ---------------------------------------------------------
+# 6. EXPENSES & SALES - ALL PRESERVED
+# ---------------------------------------------------------
 
 @app.post("/add-expense")
 async def add_expense(data: ExpenseSchema, authorization: str = Header(None)):
@@ -281,7 +331,6 @@ async def edit_expense(data: EditExpenseSchema, authorization: str = Header(None
         token = authorization.split("Bearer ")[1]
         auth.verify_id_token(token)
         ref_exp = db.reference(f'global_batches/{data.batchId}/expenses/{data.expenseId}')
-        
         ref_exp.update({
             "category": data.category,
             "feedType": data.feedType,
@@ -327,8 +376,6 @@ async def update_expense_category(data: UpdateFeedCategorySchema, authorization:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- SALES ---
-
 @app.post("/add-sale")
 async def add_sale(data: SalesRecordSchema, authorization: str = Header(None)):
     try:
@@ -349,7 +396,6 @@ async def edit_sale(data: EditSalesRecordSchema, authorization: str = Header(Non
         token = authorization.split("Bearer ")[1]
         auth.verify_id_token(token)
         ref_sale = db.reference(f'global_batches/{data.batchId}/sales/{data.saleId}')
-        
         ref_sale.update({
             "buyerName": data.buyerName,
             "address": data.address,
@@ -382,7 +428,9 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- FORECAST ---
+# ---------------------------------------------------------
+# 7. FEED LOGIC & TEMPERATURE - ALL PRESERVED
+# ---------------------------------------------------------
 
 FEED_LOGIC = [
     (range(1, 2), 0.60, "Booster"), (range(2, 4), 0.70, "Booster"),
@@ -402,10 +450,8 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
         auth.verify_id_token(token)
         batch_data = db.reference(f'global_batches/{batch_id}').get()
         if not batch_data: raise HTTPException(status_code=404, detail="Batch not found")
-        
         population = batch_data.get('startingPopulation', 0)
         multiplier = population / 1000 
-        
         forecast_list = []
         for day in range(1, 31):
             f_match = next((item for item in FEED_LOGIC if day in item[0]), None)
@@ -415,20 +461,13 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
                     "feedType": f_match[2],
                     "targetKilos": round(f_match[1] * multiplier, 2)
                 })
-        
         return {"batchName": batch_data.get('batchName'), "forecast": forecast_list}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- ACCURATE WEATHER & TEMPERATURE (Bacolod Coordinates) ---
-
 @app.get("/get-temperature")
-async def get_temperature():
-    """
-    Fetches real-time temperature and weather code for Bacolod.
-    Coordinates: 10.68, 122.95
-    """
-    url = "https://api.open-meteo.com/v1/forecast?latitude=10.68&longitude=122.95&current=temperature_2m,weather_code"
+async def get_temperature(lat: float = 10.68, lon: float = 122.95):
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code"
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
@@ -436,8 +475,13 @@ async def get_temperature():
             current = data.get("current", {})
             return {
                 "temperature": current.get("temperature_2m"),
+                "humidity": current.get("relative_humidity_2m"),
                 "weatherCode": current.get("weather_code"),
                 "unit": "°C"
             }
     except Exception as e:
-        return {"temperature": "N/A", "weatherCode": None, "unit": ""}
+        return {"temperature": 0, "humidity": 0, "weatherCode": None, "unit": "°C"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

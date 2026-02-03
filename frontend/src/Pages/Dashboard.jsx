@@ -49,32 +49,49 @@ const Dashboard = () => {
   const getWeatherDetails = (code) => {
     // WMO Weather interpretation codes
     if (code === 0) return { icon: "☀️", label: "Sunny", color: "text-orange-600", bg: "bg-orange-50" };
-    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Cloudy", color: "text-yellow-600", bg: "bg-yellow-50" };
+    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Partly Cloudy", color: "text-yellow-600", bg: "bg-yellow-50" };
+    if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-gray-500", bg: "bg-gray-50" };
     if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy", color: "text-blue-600", bg: "bg-blue-50" };
     if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-600", bg: "bg-indigo-50" };
     if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-600", bg: "bg-purple-50" };
     
-    // Default fallback
     return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50" };
   };
 
-  // --- FETCH WEATHER ON MOUNT ---
+  // --- FETCH WEATHER (DYNAMIC GPS LOCATION) ---
   useEffect(() => {
-    const fetchWeather = async () => {
+    const fetchWeather = async (lat = 9.3068, lon = 123.3050) => { // Default to Negros Oriental coords
       try {
-        const response = await fetch("http://localhost:8000/get-temperature");
+        const response = await fetch(`http://localhost:8000/get-temperature?lat=${lat}&lon=${lon}`);
         const data = await response.json();
         setWeatherData({
           temp: data.temperature,
           code: data.weatherCode,
-          unit: data.unit
+          unit: data.unit || "°C"
         });
       } catch (err) {
         console.error("Weather fetch error:", err);
       }
     };
-    fetchWeather();
-    const interval = setInterval(fetchWeather, 600000); // 10 mins
+
+    // Try to get dynamic browser position for Negros Oriental precision
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+        () => fetchWeather() // Fallback to default
+      );
+    } else {
+      fetchWeather();
+    }
+
+    const interval = setInterval(() => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((p) => fetchWeather(p.coords.latitude, p.coords.longitude));
+      } else {
+        fetchWeather();
+      }
+    }, 600000); // 10 mins
+
     return () => clearInterval(interval);
   }, []);
 
@@ -259,8 +276,8 @@ const Dashboard = () => {
             {activeTab}
           </h1>
 
-          {/* COMPACT WEATHER DISPLAY (MODIFIED SIZE) */}
-          {weatherData.temp !== "N/A" && (
+          {/* COMPACT WEATHER DISPLAY (DYNAMIC GPS SYNCED) */}
+          {weatherData.temp !== "--" && (
             <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm ${getWeatherDetails(weatherData.code).bg}`}>
               <span className="text-xl animate-bounce-slow">
                 {getWeatherDetails(weatherData.code).icon}
@@ -324,6 +341,7 @@ const Dashboard = () => {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
               >
                 <path
                   strokeLinecap="round"

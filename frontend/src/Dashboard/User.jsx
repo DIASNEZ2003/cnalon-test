@@ -3,7 +3,7 @@ import { auth } from '../firebase';
 import { getDatabase, ref, onValue } from "firebase/database";
 import { 
   UserPlus, Users, MessageSquare, Trash2, Lock, 
-  Check, AlertTriangle, Send, X, Edit2
+  Check, AlertTriangle, Send, X, Edit2, ShieldCheck
 } from 'lucide-react';
 
 // --- HELPER: TIME FORMAT ---
@@ -162,10 +162,8 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-      {/* Modal is constrained to 80% screen height to prevent scrolling */}
       <div className="bg-white w-full max-w-md h-[500px] max-h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative border border-gray-100">
         
-        {/* EDIT/DELETE OVERLAYS */}
         {msgToDelete && (
           <div className="absolute inset-0 z-[120] bg-white/90 backdrop-blur flex items-center justify-center p-4">
             <div className="text-center">
@@ -191,16 +189,25 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
           </div>
         )}
 
-        {/* HEADER */}
+        {/* HEADER: UPDATED WITH PROFILE PICTURE AND REAL-TIME STATUS */}
         <div className="bg-[#3B0A0A] p-4 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold border border-white/20">
-              {targetUser.username?.charAt(0).toUpperCase()}
-              <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#3B0A0A] rounded-full ${targetUser.status === 'active' ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+            <div className="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold border border-white/20 overflow-hidden">
+              {targetUser.profilePicture ? (
+                <img src={targetUser.profilePicture} className="w-full h-full object-cover" alt="" />
+              ) : (
+                targetUser.username?.charAt(0).toUpperCase()
+              )}
+              <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#3B0A0A] rounded-full ${targetUser.status === 'online' ? 'bg-green-400' : 'bg-gray-400'}`}></div>
             </div>
             <div>
-              <h3 className="font-bold text-white leading-tight">{targetUser.username}</h3>
-              <p className="text-[10px] text-white/60 uppercase font-bold tracking-wider">{targetUser.status || 'Offline'}</p>
+              <h3 className="font-bold text-white leading-tight flex items-center gap-1">
+                {targetUser.username}
+                {targetUser.role === 'admin' && <ShieldCheck size={14} className="text-blue-400" />}
+              </h3>
+              <p className="text-[10px] text-white/60 uppercase font-bold tracking-wider">
+                {targetUser.status === 'online' ? 'Online' : 'Offline'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition">
@@ -208,8 +215,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
           </button>
         </div>
 
-        {/* MESSAGES */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3 no-scrollbar">
           {messages.map((m) => {
             const isAdmin = m.sender === 'admin';
             return (
@@ -232,7 +238,6 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
           <div ref={scrollRef} />
         </div>
 
-        {/* INPUT AREA */}
         <form onSubmit={sendMessage} className="p-3 bg-white border-t border-gray-100 flex gap-2 items-center">
           <input 
             type="text" 
@@ -261,25 +266,26 @@ const UserManagement = () => {
 
   const backendUrl = "http://localhost:8000";
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const user = auth.currentUser;
-      if (!user) return;
-      const token = await user.getIdToken();
-      const response = await fetch(`${backendUrl}/get-users`, { headers: { "Authorization": `Bearer ${token}` }});
-      if (response.ok) setUsers(await response.json() || []);
-    } catch (error) { 
-      console.error(error); 
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // INTEGRATED REAL-TIME LISTENER FOR USER DIRECTORY
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) fetchUsers();
+    const db = getDatabase();
+    const usersRef = ref(db, 'users');
+    
+    // This watches the entire 'users' node for any changes (Status, Profile Pics, etc.)
+    const unsubscribe = onValue(usersRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const list = Object.keys(data).map(uid => ({
+          uid,
+          ...data[uid]
+        }));
+        setUsers(list);
+      } else {
+        setUsers([]);
+      }
+      setLoading(false);
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -297,7 +303,7 @@ const UserManagement = () => {
       const token = await user.getIdToken();
       const endpoint = type === 'create' ? '/admin-create-user' : `/admin-delete-user/${targetId}`;
       const method = type === 'create' ? 'POST' : 'DELETE';
-      const body = type === 'create' ? JSON.stringify({ ...formData, profilePicture: "" }) : null;
+      const body = type === 'create' ? JSON.stringify(formData) : null;
 
       const response = await fetch(`${backendUrl}${endpoint}`, {
         method,
@@ -308,13 +314,13 @@ const UserManagement = () => {
       if (response.ok) {
         setSuccessMessage(type === 'create' ? "Account Created!" : "User Deleted!");
         if (type === 'create') setFormData({ firstName: '', lastName: '', username: '', password: '', confirmPassword: '' });
-        fetchUsers();
       }
     } catch (e) { console.error(e); }
   };
 
+  const regularUsers = users.filter(u => u.role !== 'admin');
+
   return (
-    // FIX: Using h-[calc(100vh-6rem)] to force "fit to screen" and internal scrolling
     <div className="bg-gray-50 h-[calc(100vh-6rem)] w-full overflow-hidden p-4">
       <SuccessModal message={successMessage} onClose={() => setSuccessMessage('')} />
       <MessengerModal isOpen={!!chatUser} onClose={() => setChatUser(null)} targetUser={chatUser} />
@@ -322,7 +328,7 @@ const UserManagement = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
         
-        {/* --- LEFT PANEL: REGISTER FORM (Scrollable if needed) --- */}
+        {/* LEFT SECTION: REGISTRATION FORM */}
         <div className="lg:col-span-1 h-full overflow-y-auto pr-1 no-scrollbar">
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
             <div className="bg-[#3B0A0A] p-5">
@@ -367,14 +373,13 @@ const UserManagement = () => {
           </div>
         </div>
 
-        {/* --- RIGHT PANEL: USER DIRECTORY (Fixed layout with internal scroll) --- */}
+        {/* RIGHT SECTION: USER DIRECTORY (UPDATED FOR REAL-TIME PROFILE PICS & STATUS) */}
         <div className="lg:col-span-2 h-full flex flex-col">
-          
           <div className="flex items-center justify-between border-b border-gray-200 mb-6 pb-4 shrink-0">
             <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A]">
               <Users className="h-5 w-5" /> User Directory
             </h2>
-            <span className="text-xs font-bold bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{users.length} Users</span>
+            <span className="text-xs font-bold bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{regularUsers.length} Users</span>
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2 pb-4 no-scrollbar">
@@ -382,16 +387,15 @@ const UserManagement = () => {
               <div className="flex justify-center items-center py-20">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#3B0A0A]"></div>
               </div>
-            ) : users.length === 0 ? (
+            ) : regularUsers.length === 0 ? (
               <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-16 text-center">
                 <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
                 <h3 className="text-lg font-bold text-gray-400">No Users Found</h3>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {users.map((u) => (
+                {regularUsers.map((u) => (
                   <div key={u.uid} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden">
-                    
                     <div className="p-6 flex flex-col items-center text-center">
                       <div className="relative mb-4">
                         <div className="h-20 w-20 rounded-full bg-gray-50 border-4 border-white shadow-md overflow-hidden flex items-center justify-center">
@@ -401,10 +405,13 @@ const UserManagement = () => {
                             <span className="font-black text-2xl text-gray-300">{u.username?.charAt(0).toUpperCase()}</span>
                           )}
                         </div>
-                        <div className={`absolute bottom-1 right-1 w-5 h-5 border-4 border-white rounded-full ${u.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                        {/* REAL-TIME ONLINE DOT */}
+                        <div className={`absolute bottom-1 right-1 w-5 h-5 border-4 border-white rounded-full ${u.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                       </div>
 
-                      <h3 className="font-black text-gray-800 text-lg leading-tight uppercase tracking-tight mb-1">{u.username}</h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-black text-gray-800 text-lg leading-tight uppercase tracking-tight">{u.username}</h3>
+                      </div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{u.firstName} {u.lastName}</p>
                     </div>
                     
@@ -429,6 +436,12 @@ const UserManagement = () => {
           </div>
         </div>
       </div>
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+      `}</style>
     </div>
   );
 };
