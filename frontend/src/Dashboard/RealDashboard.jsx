@@ -92,7 +92,7 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
                 <XAxis dataKey="name" axisLine={{ stroke: '#cbd5e1' }} tickLine={false} tick={{ fontSize: 9, fill: '#64748b', fontWeight: 700 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={(val) => val >= 1000 ? `${val/1000}k` : val} />
                 <Tooltip content={<CustomGraphTooltip />} cursor={{ fill: '#f8fafc', opacity: 0.5 }} />
-                {/* 3. REFERENCE LINE (The "Line" you wanted to see) */}
+                {/* 3. REFERENCE LINE */}
                 <ReferenceLine y={Number(prevValue)} stroke="#94a3b8" strokeDasharray="3 3" />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={35}>
                   {graphData.map((entry, index) => (
@@ -563,7 +563,7 @@ const RealDashboard = () => {
 
       </div>
 
-      {/* --- FEED CHART SECTION --- */}
+      {/* --- FEED CHART SECTION (Forecast Day 1 to 30) --- */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
             <div className="flex items-center gap-2"><div className="p-2 bg-indigo-50 rounded-lg"><ChartIcon size={18} className="text-indigo-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption Forecast</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic">Batch Calendar Integration</p></div></div>

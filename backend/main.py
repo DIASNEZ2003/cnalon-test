@@ -3,13 +3,14 @@ from firebase_admin import credentials, auth, db
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import time
 import httpx
 
 # ---------------------------------------------------------
 # 1. SETUP & INITIALIZATION
 # ---------------------------------------------------------
+# Ensure your serviceAccountKey.json is in the same directory
 cred = credentials.Certificate("serviceAccountKey.json")
 
 if not firebase_admin._apps:
@@ -202,6 +203,33 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
 # 4. BATCH MANAGEMENT
 # ---------------------------------------------------------
 
+# Standard Feed Logic Template
+FEED_LOGIC_TEMPLATE = [
+    (range(1, 2), 0.60, "Booster"), (range(2, 4), 0.70, "Booster"),
+    (range(4, 7), 0.80, "Booster"), (range(7, 11), 0.90, "Booster"),
+    (range(11, 14), 1.00, "Starter"), (range(14, 17), 1.20, "Starter"),
+    (range(17, 20), 1.40, "Starter"), (range(20, 22), 1.50, "Starter"),
+    (range(22, 24), 1.60, "Starter"), (range(24, 25), 2.00, "Finisher"),
+    (range(25, 26), 2.40, "Finisher"), (range(26, 27), 2.60, "Finisher"),
+    (range(27, 28), 3.00, "Finisher"), (range(28, 29), 3.20, "Finisher"),
+    (range(29, 31), 3.40, "Finisher"),
+]
+
+# Helper function to generate forecast data
+def generate_forecast_data(starting_population: int):
+    multiplier = starting_population / 1000
+    forecast_data = []
+    
+    for day in range(1, 31):
+        f_match = next((item for item in FEED_LOGIC_TEMPLATE if day in item[0]), None)
+        if f_match:
+            forecast_data.append({
+                "day": day,
+                "feedType": f_match[2],
+                "targetKilos": round(f_match[1] * multiplier, 2)
+            })
+    return forecast_data
+
 @app.post("/create-batch")
 async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -209,17 +237,26 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     token = authorization.split("Bearer ")[1]
     try:
         auth.verify_id_token(token)
+        
+        # 1. Prepare Batch Reference
         ref_batch = db.reference('global_batches')
         new_batch_ref = ref_batch.push()
+        
+        # 2. Generate Feed Forecast Immediately
+        forecast_list = generate_forecast_data(data.startingPopulation)
+        
+        # 3. Save Batch WITH Forecast inside it
         new_batch_ref.set({
             "batchName": data.batchName,
             "dateCreated": data.dateCreated,
             "expectedCompleteDate": data.expectedCompleteDate,
             "startingPopulation": data.startingPopulation,
             "vitaminBudget": data.vitaminBudget,
-            "status": "active"
+            "status": "active",
+            "feedForecast": forecast_list  # <--- Stored directly in DB
         })
-        return {"status": "success", "message": "Batch created"}
+        
+        return {"status": "success", "message": "Batch created with forecast"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -428,45 +465,56 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 7. FEED LOGIC & WEATHER (UPDATED FOR DAY/NIGHT)
+# 7. FEED LOGIC & WEATHER (AUTO-SAVE FORECAST)
 # ---------------------------------------------------------
-
-FEED_LOGIC = [
-    (range(1, 2), 0.60, "Booster"), (range(2, 4), 0.70, "Booster"),
-    (range(4, 7), 0.80, "Booster"), (range(7, 11), 0.90, "Booster"),
-    (range(11, 14), 1.00, "Starter"), (range(14, 17), 1.20, "Starter"),
-    (range(17, 20), 1.40, "Starter"), (range(20, 22), 1.50, "Starter"),
-    (range(22, 24), 1.60, "Starter"), (range(24, 25), 2.00, "Finisher"),
-    (range(25, 26), 2.40, "Finisher"), (range(26, 27), 2.60, "Finisher"),
-    (range(27, 28), 3.00, "Finisher"), (range(28, 29), 3.20, "Finisher"),
-    (range(29, 31), 3.40, "Finisher"),
-]
 
 @app.get("/get-feed-forecast/{batch_id}")
 async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
+    """
+    Fetches the feed forecast.
+    IMPORTANT: If the batch exists but has no forecast in DB (old batch),
+    this function will generate it AND SAVE IT to the DB automatically.
+    """
     try:
         token = authorization.split("Bearer ")[1]
         auth.verify_id_token(token)
-        batch_data = db.reference(f'global_batches/{batch_id}').get()
-        if not batch_data: raise HTTPException(status_code=404, detail="Batch not found")
-        population = batch_data.get('startingPopulation', 0)
-        multiplier = population / 1000 
+        
+        batch_ref = db.reference(f'global_batches/{batch_id}')
+        batch_data = batch_ref.get()
+        
+        if not batch_data: 
+            raise HTTPException(status_code=404, detail="Batch not found")
+
+        # 1. Check if 'feedForecast' exists in DB
+        saved_forecast = batch_data.get('feedForecast')
+
         forecast_list = []
-        for day in range(1, 31):
-            f_match = next((item for item in FEED_LOGIC if day in item[0]), None)
-            if f_match:
-                forecast_list.append({
-                    "day": day, 
-                    "feedType": f_match[2],
-                    "targetKilos": round(f_match[1] * multiplier, 2)
-                })
+        if saved_forecast:
+            # If it's a list in DB, use it directly
+            if isinstance(saved_forecast, list):
+                forecast_list = saved_forecast
+            else:
+                # If stored as dict (firebase default for non-sequential keys), convert to list
+                forecast_list = list(saved_forecast.values())
+                # Sort just in case
+                forecast_list.sort(key=lambda x: x['day'])
+        else:
+            # 2. AUTO-GENERATE & SAVE if missing (Self-Healing)
+            start_pop = batch_data.get('startingPopulation', 0)
+            if start_pop > 0:
+                forecast_list = generate_forecast_data(start_pop)
+                
+                # Save to DB so next time it is fetched directly
+                batch_ref.child('feedForecast').set(forecast_list)
+            else:
+                forecast_list = [] # Should not happen if data is valid
+
         return {"batchName": batch_data.get('batchName'), "forecast": forecast_list}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/get-temperature")
 async def get_temperature(lat: float = 10.68, lon: float = 122.95):
-    # ADDED: is_day parameter to the API query
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
     try:
         async with httpx.AsyncClient() as client:
@@ -478,7 +526,7 @@ async def get_temperature(lat: float = 10.68, lon: float = 122.95):
                 "temperature": current.get("temperature_2m"),
                 "humidity": current.get("relative_humidity_2m"),
                 "weatherCode": current.get("weather_code"),
-                "isDay": current.get("is_day"), # 1 = Day, 0 = Night
+                "isDay": current.get("is_day"), 
                 "unit": "°C",
                 "last_updated": int(time.time() * 1000)
             }
