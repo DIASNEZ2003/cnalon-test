@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from "../firebase";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { getDatabase, ref, update, get } from "firebase/database";
+import { getDatabase, ref, update, get, onValue } from "firebase/database";
 import { supabase } from "../supabaseClient";
 
 import RealDashboard from "../Dashboard/RealDashboard";  
@@ -18,8 +18,8 @@ const Dashboard = () => {
   const [profileImage, setProfileImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   
-  // Dynamic Weather State
-  const [weatherData, setWeatherData] = useState({ temp: "--", code: null, unit: "°C" });
+  // Dynamic Weather State (Added isDay)
+  const [weatherData, setWeatherData] = useState({ temp: "--", code: null, unit: "°C", isDay: 1 });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const savedState = localStorage.getItem("isSidebarOpen");
@@ -45,54 +45,64 @@ const Dashboard = () => {
     { name: "Records", icon: "/folder.png" },          
   ];
 
-  // --- HELPER: GET WEATHER UI DETAILS ---
-  const getWeatherDetails = (code) => {
-    // WMO Weather interpretation codes
-    if (code === 0) return { icon: "☀️", label: "Sunny", color: "text-orange-600", bg: "bg-orange-50" };
-    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Partly Cloudy", color: "text-yellow-600", bg: "bg-yellow-50" };
-    if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-gray-500", bg: "bg-gray-50" };
-    if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy", color: "text-blue-600", bg: "bg-blue-50" };
-    if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-600", bg: "bg-indigo-50" };
-    if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-600", bg: "bg-purple-50" };
+  // --- HELPER: GET WEATHER UI DETAILS (Day/Night Logic with Blue Night) ---
+  const getWeatherDetails = (code, isDay) => {
+    // NIGHT MODE LOGIC (isDay = 0) - NOW BLUE!
+    if (isDay === 0) {
+        if (code === 0) return { icon: "🌙", label: "Clear Night", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
+        if (code >= 1 && code <= 3) return { icon: "☁️", label: "Cloudy Night", color: "text-indigo-100", bg: "bg-indigo-900 border-indigo-800" };
+        if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-blue-200", bg: "bg-blue-950 border-blue-900" };
+        if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy Night", color: "text-blue-300", bg: "bg-blue-950 border-blue-900" };
+        if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-200", bg: "bg-indigo-950 border-indigo-900" };
+        if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-200", bg: "bg-purple-900 border-purple-800" };
+        return { icon: "🌙", label: "Night", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
+    }
+
+    // DAY MODE LOGIC (isDay = 1)
+    if (code === 0) return { icon: "☀️", label: "Sunny", color: "text-orange-600", bg: "bg-orange-50 border-orange-100" };
+    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Partly Cloudy", color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-100" };
+    if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-gray-500", bg: "bg-gray-50 border-gray-200" };
+    if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy", color: "text-blue-600", bg: "bg-blue-50 border-blue-100" };
+    if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-100" };
+    if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-600", bg: "bg-purple-50 border-purple-100" };
     
-    return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50" };
+    return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50 border-gray-200" };
   };
 
-  // --- FETCH WEATHER (DYNAMIC GPS LOCATION) ---
+  // --- REAL-TIME WEATHER (FIREBASE SYNC) ---
   useEffect(() => {
-    const fetchWeather = async (lat = 9.3068, lon = 123.3050) => { // Default to Negros Oriental coords
-      try {
-        const response = await fetch(`http://localhost:8000/get-temperature?lat=${lat}&lon=${lon}`);
-        const data = await response.json();
+    const db = getDatabase();
+    const weatherRef = ref(db, 'current_weather');
+
+    // REAL-TIME LISTENER: Updates instantly when database changes
+    const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
         setWeatherData({
-          temp: data.temperature,
+          temp: data.temperature || "--",
           code: data.weatherCode,
-          unit: data.unit || "°C"
+          unit: data.unit || "°C",
+          isDay: data.isDay !== undefined ? data.isDay : 1 // Default to Day if missing
         });
+      }
+    });
+
+    // Trigger backend to fetch fresh data
+    const triggerUpdate = async (lat = 10.68, lon = 122.95) => {
+      try {
+        await fetch(`http://localhost:8000/get-temperature?lat=${lat}&lon=${lon}`);
       } catch (err) {
-        console.error("Weather fetch error:", err);
+        console.error("Weather refresh trigger error:", err);
       }
     };
 
-    // Try to get dynamic browser position for Negros Oriental precision
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
-        () => fetchWeather() // Fallback to default
-      );
-    } else {
-      fetchWeather();
-    }
+    triggerUpdate(); // Initial call
+    const interval = setInterval(triggerUpdate, 300000); // Check API every 5 mins
 
-    const interval = setInterval(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((p) => fetchWeather(p.coords.latitude, p.coords.longitude));
-      } else {
-        fetchWeather();
-      }
-    }, 600000); // 10 mins
-
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribeWeather(); 
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
@@ -163,6 +173,8 @@ const Dashboard = () => {
       setUploading(false);
     }
   };
+
+  const weatherUI = getWeatherDetails(weatherData.code, weatherData.isDay);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
@@ -276,17 +288,17 @@ const Dashboard = () => {
             {activeTab}
           </h1>
 
-          {/* COMPACT WEATHER DISPLAY (DYNAMIC GPS SYNCED) */}
+          {/* REAL-TIME WEATHER DISPLAY (Day/Night Compatible) */}
           {weatherData.temp !== "--" && (
-            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm ${getWeatherDetails(weatherData.code).bg}`}>
+            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border shadow-sm transition-colors duration-500 ${weatherUI.bg}`}>
               <span className="text-xl animate-bounce-slow">
-                {getWeatherDetails(weatherData.code).icon}
+                {weatherUI.icon}
               </span>
               <div className="flex flex-col">
-                <span className={`text-[9px] font-bold uppercase tracking-tight ${getWeatherDetails(weatherData.code).color}`}>
-                  {getWeatherDetails(weatherData.code).label}
+                <span className={`text-[9px] font-bold uppercase tracking-tight ${weatherUI.color}`}>
+                  {weatherUI.label}
                 </span>
-                <span className="font-bold text-sm text-gray-800 leading-none">
+                <span className={`font-bold text-sm leading-none ${weatherData.isDay === 0 ? 'text-white' : 'text-gray-800'}`}>
                   {weatherData.temp}{weatherData.unit}
                 </span>
               </div>

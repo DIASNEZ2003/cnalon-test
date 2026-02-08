@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { auth } from '../firebase'; 
-import { getDatabase, ref, onValue } from "firebase/database";
+import { getDatabase, ref, onValue, update } from "firebase/database";
 import { 
   UserPlus, Users, MessageSquare, Trash2, Lock, 
-  Check, AlertTriangle, Send, X, Edit2, ShieldCheck
+  Check, AlertTriangle, Send, X, Edit2, ShieldCheck,
+  CheckCheck
 } from 'lucide-react';
 
 // --- HELPER: TIME FORMAT ---
@@ -99,20 +100,43 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
   const [msgToDelete, setMsgToDelete] = useState(null); 
   const [msgToEdit, setMsgToEdit] = useState(null);
   const [editText, setEditText] = useState("");
+  const [liveStatus, setLiveStatus] = useState("offline"); 
   const scrollRef = useRef();
 
   useEffect(() => {
     if (!isOpen || !targetUser) return;
     const db = getDatabase();
+    
+    // 1. WATCH TARGET USER LIVE STATUS
+    const statusRef = ref(db, `users/${targetUser.uid}/status`);
+    const unsubStatus = onValue(statusRef, (snap) => {
+        setLiveStatus(snap.val() || "offline");
+    });
+
+    // 2. WATCH CHAT MESSAGES
     const chatRef = ref(db, `chats/${targetUser.uid}`);
-    const unsubscribe = onValue(chatRef, (snapshot) => {
+    const unsubscribeChat = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const list = Object.keys(data).map(id => ({ id, ...data[id] }));
         setMessages(list.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)));
+
+        const updates = {};
+        Object.keys(data).forEach(id => {
+            // ADMIN SIDE SEEN LOGIC: When Admin opens modal, user messages become seen
+            if (data[id].sender === 'user' && data[id].seen !== true) {
+                updates[`chats/${targetUser.uid}/${id}/seen`] = true;
+                updates[`chats/${targetUser.uid}/${id}/status`] = 'seen';
+            }
+        });
+        if (Object.keys(updates).length > 0) update(ref(db), updates);
       } else { setMessages([]); }
     });
-    return () => unsubscribe();
+
+    return () => {
+        unsubscribeChat();
+        unsubStatus();
+    };
   }, [isOpen, targetUser]);
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -123,6 +147,9 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
     try {
       const user = auth.currentUser;
       const token = await user.getIdToken();
+      
+      // ADMIN TO USER: Start as "sent". 
+      // User app handles flipping it to "delivered" when they are active.
       await fetch("http://localhost:8000/admin-send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -189,7 +216,6 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
           </div>
         )}
 
-        {/* HEADER: UPDATED WITH PROFILE PICTURE AND REAL-TIME STATUS */}
         <div className="bg-[#3B0A0A] p-4 flex items-center justify-between shadow-md">
           <div className="flex items-center gap-3">
             <div className="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold border border-white/20 overflow-hidden">
@@ -198,15 +224,15 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
               ) : (
                 targetUser.username?.charAt(0).toUpperCase()
               )}
-              <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#3B0A0A] rounded-full ${targetUser.status === 'online' ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+              <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#3B0A0A] rounded-full ${liveStatus === 'online' ? 'bg-green-400' : 'bg-gray-400'}`}></div>
             </div>
             <div>
               <h3 className="font-bold text-white leading-tight flex items-center gap-1">
                 {targetUser.username}
                 {targetUser.role === 'admin' && <ShieldCheck size={14} className="text-blue-400" />}
               </h3>
-              <p className="text-[10px] text-white/60 uppercase font-bold tracking-wider">
-                {targetUser.status === 'online' ? 'Online' : 'Offline'}
+              <p className="text-[10px] text-white/60 uppercase font-bold tracking-wider italic">
+                {liveStatus === 'online' ? 'Active Now' : 'Offline'}
               </p>
             </div>
           </div>
@@ -230,7 +256,21 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
                       </div>
                     )}
                   </div>
-                  <span className="text-[9px] text-gray-400 mt-1 font-bold ml-1">{formatTime(m.timestamp)} {m.isEdited ? '• Edited' : ''}</span>
+                  
+                  <div className="flex items-center gap-1.5 mt-1 px-1">
+                    <span className="text-[9px] text-gray-400 font-bold">{formatTime(m.timestamp)} {m.isEdited ? '• Edited' : ''}</span>
+                    {isAdmin && (
+                        <div className="flex items-center">
+                            {m.seen ? (
+                                <span className="text-[9px] font-black text-blue-500 uppercase italic">Seen</span>
+                            ) : m.status === 'delivered' ? (
+                                <span className="text-[9px] font-black text-gray-400 uppercase italic">Delivered</span>
+                            ) : (
+                                <span className="text-[9px] font-black text-gray-300 uppercase italic">Sent</span>
+                            )}
+                        </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -258,6 +298,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
 // --- MAIN PAGE COMPONENT ---
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
+  const [unreadCounts, setUnreadCounts] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
   const [chatUser, setChatUser] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, targetId: null });
@@ -266,27 +307,36 @@ const UserManagement = () => {
 
   const backendUrl = "http://localhost:8000";
 
-  // INTEGRATED REAL-TIME LISTENER FOR USER DIRECTORY
   useEffect(() => {
     const db = getDatabase();
-    const usersRef = ref(db, 'users');
     
-    // This watches the entire 'users' node for any changes (Status, Profile Pics, etc.)
-    const unsubscribe = onValue(usersRef, (snapshot) => {
+    // 1. LISTEN TO USERS
+    const usersRef = ref(db, 'users');
+    const unsubUsers = onValue(usersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const list = Object.keys(data).map(uid => ({
-          uid,
-          ...data[uid]
-        }));
+        const list = Object.keys(data).map(uid => ({ uid, ...data[uid] }));
         setUsers(list);
-      } else {
-        setUsers([]);
-      }
+      } else { setUsers([]); }
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // 2. LISTEN TO ALL CHATS FOR UNREAD INDICATORS
+    const chatsRef = ref(db, 'chats');
+    const unsubChats = onValue(chatsRef, (snapshot) => {
+        const data = snapshot.val();
+        const counts = {};
+        if (data) {
+            Object.keys(data).forEach(uid => {
+                const userMessages = data[uid];
+                const count = Object.values(userMessages).filter(m => m.sender === 'user' && !m.seen).length;
+                counts[uid] = count;
+            });
+        }
+        setUnreadCounts(counts);
+    });
+
+    return () => { unsubUsers(); unsubChats(); };
   }, []);
 
   const requestCreate = (e) => {
@@ -327,121 +377,67 @@ const UserManagement = () => {
       <ConfirmModal isOpen={confirmModal.isOpen} type={confirmModal.type} onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })} onConfirm={performAction} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
-        
-        {/* LEFT SECTION: REGISTRATION FORM */}
         <div className="lg:col-span-1 h-full overflow-y-auto pr-1 no-scrollbar">
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-            <div className="bg-[#3B0A0A] p-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm">
-                  <UserPlus className="text-white h-6 w-6" />
-                </div>
-                <div>
-                  <h2 className="text-white font-bold text-lg tracking-wide">Add New User</h2>
-                  <p className="text-white/60 text-xs">Create system access account</p>
-                </div>
-              </div>
+            <div className="bg-[#3B0A0A] p-5 flex items-center gap-3">
+              <UserPlus className="text-white h-6 w-6" />
+              <h2 className="text-white font-bold text-lg tracking-wide">Add New User</h2>
             </div>
-            
             <form onSubmit={requestCreate} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">First Name</label>
-                  <input type="text" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block p-3 outline-none font-bold" value={formData.firstName} onChange={(e)=>setFormData({...formData, firstName:e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Last Name</label>
-                  <input type="text" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block p-3 outline-none font-bold" value={formData.lastName} onChange={(e)=>setFormData({...formData, lastName:e.target.value})} />
-                </div>
+                <input type="text" required placeholder="First Name" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.firstName} onChange={(e)=>setFormData({...formData, firstName:e.target.value})} />
+                <input type="text" required placeholder="Last Name" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.lastName} onChange={(e)=>setFormData({...formData, lastName:e.target.value})} />
               </div>
-              
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Username</label>
-                <div className="relative">
-                  <Users className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                  <input type="text" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold" value={formData.username} onChange={(e)=>setFormData({...formData, username:e.target.value})} />
-                </div>
-              </div>
-
+              <input type="text" required placeholder="Username" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.username} onChange={(e)=>setFormData({...formData, username:e.target.value})} />
               <PasswordInput label="Create Password" value={formData.password} onChange={(e)=>setFormData({...formData, password:e.target.value})} />
               <PasswordInput label="Confirm Password" value={formData.confirmPassword} onChange={(e)=>setFormData({...formData, confirmPassword:e.target.value})} />
-              
-              <button type="submit" className="w-full mt-4 text-white bg-[#3B0A0A] hover:bg-red-900 focus:ring-4 focus:ring-red-300 font-bold rounded-xl text-sm px-5 py-4 text-center transition-all shadow-lg hover:shadow-xl active:scale-95 uppercase tracking-wide">
-                CREATE ACCOUNT
-              </button>
+              <button type="submit" className="w-full mt-4 text-white bg-[#3B0A0A] hover:bg-red-900 font-bold rounded-xl text-sm py-4 shadow-lg uppercase tracking-wide">CREATE ACCOUNT</button>
             </form>
           </div>
         </div>
 
-        {/* RIGHT SECTION: USER DIRECTORY (UPDATED FOR REAL-TIME PROFILE PICS & STATUS) */}
         <div className="lg:col-span-2 h-full flex flex-col">
-          <div className="flex items-center justify-between border-b border-gray-200 mb-6 pb-4 shrink-0">
-            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A]">
-              <Users className="h-5 w-5" /> User Directory
-            </h2>
+          <div className="flex items-center justify-between border-b mb-6 pb-4 shrink-0">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A]"><Users className="h-5 w-5" /> User Directory</h2>
             <span className="text-xs font-bold bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{regularUsers.length} Users</span>
           </div>
+          <div className="flex-1 overflow-y-auto no-scrollbar">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {regularUsers.map((u) => {
+                const unread = unreadCounts[u.uid] || 0;
+                return (
+                  <div key={u.uid} className="group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden relative">
+                    {/* TOP RIGHT UNREAD INDICATOR */}
+                    {unread > 0 && (
+                      <div className="absolute top-3 right-3 bg-red-600 text-white text-[10px] font-black h-5 w-5 rounded-full flex items-center justify-center shadow-lg border-2 border-white animate-bounce">
+                        {unread}
+                      </div>
+                    )}
 
-          <div className="flex-1 overflow-y-auto pr-2 pb-4 no-scrollbar">
-            {loading ? (
-              <div className="flex justify-center items-center py-20">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#3B0A0A]"></div>
-              </div>
-            ) : regularUsers.length === 0 ? (
-              <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-16 text-center">
-                <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                <h3 className="text-lg font-bold text-gray-400">No Users Found</h3>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {regularUsers.map((u) => (
-                  <div key={u.uid} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden">
                     <div className="p-6 flex flex-col items-center text-center">
                       <div className="relative mb-4">
                         <div className="h-20 w-20 rounded-full bg-gray-50 border-4 border-white shadow-md overflow-hidden flex items-center justify-center">
-                          {u.profilePicture ? (
-                            <img src={u.profilePicture} className="w-full h-full object-cover" alt="Avatar" />
-                          ) : (
-                            <span className="font-black text-2xl text-gray-300">{u.username?.charAt(0).toUpperCase()}</span>
-                          )}
+                          {u.profilePicture ? <img src={u.profilePicture} className="w-full h-full object-cover" /> : <span className="font-black text-2xl text-gray-300">{u.username?.charAt(0).toUpperCase()}</span>}
                         </div>
-                        {/* REAL-TIME ONLINE DOT */}
                         <div className={`absolute bottom-1 right-1 w-5 h-5 border-4 border-white rounded-full ${u.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                       </div>
-
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-black text-gray-800 text-lg leading-tight uppercase tracking-tight">{u.username}</h3>
-                      </div>
+                      <h3 className="font-black text-gray-800 text-lg uppercase leading-none mb-1">{u.username}</h3>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{u.firstName} {u.lastName}</p>
                     </div>
-                    
-                    <div className="bg-gray-50 p-4 border-t border-gray-100 flex gap-3">
-                      <button 
-                        onClick={() => setChatUser(u)} 
-                        className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 py-3 rounded-xl shadow-sm transition-colors uppercase tracking-wide"
-                      >
-                        <MessageSquare size={14} /> Chat
+                    <div className="bg-gray-50 p-4 border-t flex gap-3">
+                      <button onClick={() => setChatUser(u)} className={`flex-1 flex items-center justify-center gap-2 text-xs font-bold py-3 rounded-xl uppercase tracking-wide transition-all ${unread > 0 ? 'bg-blue-600 text-white scale-105 shadow-md' : 'text-blue-600 bg-white border border-blue-100 hover:bg-blue-50'}`}>
+                        <MessageSquare size={14} /> {unread > 0 ? 'New Message' : 'Chat'}
                       </button>
-                      <button 
-                        onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: u.uid })} 
-                        className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 py-3 rounded-xl shadow-sm transition-colors uppercase tracking-wide"
-                      >
-                        <Trash2 size={14} /> Remove
-                      </button>
+                      <button onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: u.uid })} className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 py-3 rounded-xl uppercase tracking-wide transition-colors"><Trash2 size={14} /> Remove</button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
-      <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
-      `}</style>
+      <style>{` .no-scrollbar::-webkit-scrollbar { display: none; } `}</style>
     </div>
   );
 };

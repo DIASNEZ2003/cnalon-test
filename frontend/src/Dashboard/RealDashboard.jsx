@@ -2,9 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { 
   Layers, TrendingUp, TrendingDown, Users, Skull, 
   Database, Scale, ShoppingBag, 
-  LineChart as ChartIcon, DollarSign, Activity, 
-  CheckCircle, FlaskConical, UserCheck, Wallet, PieChart as PieIcon,
-  Clock, Sun, Moon, BarChart3
+  LineChart as ChartIcon, Activity, 
+  FlaskConical, Wallet, PieChart as PieIcon,
+  Clock, Sun, Moon, BarChart3, ArrowUpRight, ArrowDownRight,
+  GitCompare, X
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
@@ -16,14 +17,16 @@ import {
 
 const RealDashboard = () => {
   const [activeBatch, setActiveBatch] = useState(null);
+  const [previousBatch, setPreviousBatch] = useState(null); // NEW: Store previous batch
   const [allBatchesData, setAllBatchesData] = useState([]); 
   const [forecastData, setForecastData] = useState([]);
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
+  const [showCompareModal, setShowCompareModal] = useState(false); // NEW: Modal State
 
   // --- CONSTANTS ---
-  const ESTIMATED_MORTALITY = 0; 
+  const ESTIMATED_MORTALITY = 0; // Replace with real DB value if available
   const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 
   // --- DERIVED STATS ---
@@ -33,7 +36,6 @@ const RealDashboard = () => {
     totalFeedKilos: 0, 
     totalVitaminGrams: 0, 
     qtyHarvested: 0, 
-    activeSystemUsers: 0  
   });
 
   const backendUrl = "http://localhost:8000";
@@ -47,34 +49,25 @@ const RealDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Load Data & Fetch Users
+  // 2. Load Data
   useEffect(() => {
     if (!currentUser) return;
-
-    const fetchUsers = async () => {
-      try {
-        const token = await currentUser.getIdToken();
-        const res = await fetch(`${backendUrl}/get-users`, {
-           headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const users = await res.json();
-          setStats(prev => ({ ...prev, activeSystemUsers: users.length }));
-        }
-      } catch (err) {
-        console.error("Error fetching users:", err);
-      }
-    };
-    fetchUsers();
 
     const batchesRef = ref(db, 'global_batches');
     const unsubscribe = onValue(batchesRef, (snapshot) => {
       if (snapshot.exists()) {
         const allBatches = snapshot.val();
-        const batchList = Object.entries(allBatches).map(([id, data]) => ({ id, ...data }));
+        // Sort batches by date created (descending) to find the "Last" batch easily
+        const batchList = Object.entries(allBatches)
+          .map(([id, data]) => ({ id, ...data }))
+          .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated));
         
         const firstActive = batchList.find(b => b.status === 'active');
+        // Find the most recent COMPLETED batch for comparison
+        const lastCompleted = batchList.find(b => b.status === 'completed');
+
         setActiveBatch(firstActive);
+        setPreviousBatch(lastCompleted); // Set the previous batch
         setAllBatchesData(batchList);
 
         let totalExp = 0, totalSales = 0, feedKilos = 0, vitaminGrams = 0, harvestedHeads = 0;
@@ -88,20 +81,18 @@ const RealDashboard = () => {
             });
           }
 
-          // --- MODIFIED: USE usedFeeds DATABASE ---
+          // --- CALCULATE USED FEEDS ---
           if (firstActive.usedFeeds) {
             Object.values(firstActive.usedFeeds).forEach(f => {
               feedKilos += Number(f.quantity || 0);
-              // Adding cost of consumed feeds to total expenses if price is available
               if (f.pricePerUnit) totalExp += (Number(f.pricePerUnit) * Number(f.quantity));
             });
           }
 
-          // --- MODIFIED: USE usedVitamins DATABASE ---
+          // --- CALCULATE USED VITAMINS ---
           if (firstActive.usedVitamins) {
             Object.values(firstActive.usedVitamins).forEach(v => {
               vitaminGrams += Number(v.quantity || 0);
-              // Adding cost of consumed vitamins to total expenses if price is available
               if (v.pricePerUnit) totalExp += (Number(v.pricePerUnit) * Number(v.quantity));
             });
           }
@@ -149,6 +140,46 @@ const RealDashboard = () => {
     getForecast();
   }, [activeBatch, currentUser]);
 
+  // --- HELPER: CALCULATE METRICS FOR ANY BATCH ---
+  const getBatchMetrics = (batch) => {
+    if (!batch) return null;
+
+    let sales = 0, expenses = 0, harvestQty = 0, feedKilos = 0;
+    
+    // Calculate totals for the batch passed in
+    if (batch.sales) {
+       Object.values(batch.sales).forEach(s => {
+          sales += Number(s.totalAmount || 0);
+          harvestQty += Number(s.quantity || 0);
+       });
+    }
+    if (batch.expenses) Object.values(batch.expenses).forEach(e => expenses += (Number(e.amount) * Number(e.quantity || 1)));
+    if (batch.usedFeeds) {
+        Object.values(batch.usedFeeds).forEach(f => {
+            feedKilos += Number(f.quantity || 0);
+            expenses += (Number(f.pricePerUnit || 0) * Number(f.quantity || 0));
+        });
+    }
+    if (batch.usedVitamins) Object.values(batch.usedVitamins).forEach(v => expenses += (Number(v.pricePerUnit || 0) * Number(v.quantity || 0)));
+
+    const startPop = batch.startingPopulation || 0;
+    const mortalityRate = startPop > 0 ? ((ESTIMATED_MORTALITY / startPop) * 100).toFixed(1) : 0;
+    // Estimated FCR logic
+    const estWeight = (startPop - ESTIMATED_MORTALITY) * 1.5; 
+    const fcr = estWeight > 0 ? (feedKilos / estWeight).toFixed(2) : "0.00";
+
+    return {
+        name: batch.batchName,
+        population: startPop,
+        sales: sales,
+        expenses: expenses,
+        profit: sales - expenses,
+        mortalityRate: mortalityRate,
+        fcr: fcr,
+        harvested: harvestQty
+    };
+  };
+
   // --- LOGIC: BATCH DAY & TODAY FEED STATS ---
   const currentBatchDay = useMemo(() => {
     if (!activeBatch?.dateCreated) return null;
@@ -164,7 +195,6 @@ const RealDashboard = () => {
     const todayStr = new Date().toISOString().split('T')[0];
     let actualToday = 0;
     
-    // Check usedFeeds for today's entry
     if (activeBatch.usedFeeds) {
         Object.values(activeBatch.usedFeeds).forEach(f => {
             if (f.date === todayStr) {
@@ -186,7 +216,6 @@ const RealDashboard = () => {
       .map(b => {
         let exp = 0, sale = 0;
         if (b.expenses) Object.values(b.expenses).forEach(e => exp += (Number(e.amount) * Number(e.quantity || 1)));
-        // Add cost from separate used collections for history if applicable
         if (b.usedFeeds) Object.values(b.usedFeeds).forEach(f => exp += (Number(f.pricePerUnit || 0) * Number(f.quantity || 0)));
         if (b.usedVitamins) Object.values(b.usedVitamins).forEach(v => exp += (Number(v.pricePerUnit || 0) * Number(v.quantity || 0)));
         
@@ -207,7 +236,6 @@ const RealDashboard = () => {
         categories[exp.category] = (categories[exp.category] || 0) + cost;
       });
     }
-    // Add Used Feeds and Vitamins to the Pie Chart Breakdown
     if (activeBatch.usedFeeds) {
         const feedCost = Object.values(activeBatch.usedFeeds).reduce((acc, f) => acc + (Number(f.pricePerUnit || 0) * Number(f.quantity || 0)), 0);
         if (feedCost > 0) categories['Feeds (Consumed)'] = (categories['Feeds (Consumed)'] || 0) + feedCost;
@@ -255,11 +283,19 @@ const RealDashboard = () => {
      );
   }
 
+  // --- CALCULATION LOGIC ---
   const netIncome = stats.sales - stats.expenses;
   const startPop = activeBatch.startingPopulation || 0;
   const currentPop = startPop - stats.qtyHarvested - ESTIMATED_MORTALITY;
   const mortalityRate = startPop > 0 ? ((ESTIMATED_MORTALITY / startPop) * 100).toFixed(1) : 0;
-  const totalWeightProduced = 0, fcr = "0.00";
+  
+  // Avg Weight (Placeholder if not tracked, assuming 1.5kg avg for FCR calc)
+  const avgWeight = 0.00; // Replace with real data if you track daily weights
+  
+  // FCR: Total Feed / ((Current Birds * Avg Weight) + (Harvested Birds * Avg Harvest Weight))
+  const estimatedTotalBiomass = (currentPop * 1.5) + (stats.qtyHarvested * 1.6);
+  const fcr = estimatedTotalBiomass > 0 ? (stats.totalFeedKilos / estimatedTotalBiomass).toFixed(2) : "0.00";
+
   const progress = calculateProgress(activeBatch.dateCreated, activeBatch.expectedCompleteDate);
   const daysLeft = getRemainingDays(activeBatch.expectedCompleteDate);
 
@@ -277,88 +313,149 @@ const RealDashboard = () => {
     return null;
   };
 
+  // --- COMPARISON LOGIC ---
+  const currentMetrics = getBatchMetrics(activeBatch);
+  const prevMetrics = getBatchMetrics(previousBatch);
+
   return (
-    <div className="flex-1 bg-gray-50 -mt-7 p-4 overflow-y-auto pb-20">
+    <div className="flex-1 bg-gray-50 -mt-7 p-4 overflow-y-auto pb-20 relative">
       
       {/* --- HEADER --- */}
-      <div className="bg-[#3B0A0A] p-6 rounded-2xl shadow-xl text-white mb-8">
-        <div className="flex justify-between items-start mb-4">
+      <div className="bg-[#3B0A0A] p-6 rounded-2xl shadow-xl text-white mb-8 relative overflow-hidden group">
+        <div className="relative z-10 flex justify-between items-start mb-4">
           <div>
             <div className="flex items-center gap-2">
                <Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase tracking-wide">{activeBatch.batchName}</h1>
+               {/* --- COMPARE BUTTON --- */}
+               {previousBatch && (
+                   <button 
+                    onClick={() => setShowCompareModal(true)}
+                    className="ml-2 flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded-lg text-[10px] uppercase font-bold transition-colors border border-white/10"
+                   >
+                       <GitCompare size={12} /> Compare vs Last
+                   </button>
+               )}
             </div>
             <p className="text-white/60 text-xs mt-1 uppercase font-bold tracking-wider">Active Batch Dashboard</p>
           </div>
           <span className="text-xs bg-green-500/20 text-green-400 px-3 py-1 rounded border border-green-500/30 font-bold uppercase">{activeBatch.status}</span>
         </div>
-        <div className="w-full bg-black/30 h-3 rounded-full overflow-hidden backdrop-blur-sm">
+        <div className="relative z-10 w-full bg-black/30 h-3 rounded-full overflow-hidden backdrop-blur-sm">
           <div className="bg-gradient-to-r from-orange-400 to-red-500 h-full transition-all duration-500 shadow-lg" style={{ width: `${progress}%` }} />
         </div>
-        <div className="flex justify-between mt-2 text-xs font-bold text-white/50 uppercase">
+        <div className="relative z-10 flex justify-between mt-2 text-xs font-bold text-white/50 uppercase">
              <span>Started: {activeBatch.dateCreated}</span>
              <span className="text-orange-300">Harvest: {activeBatch.expectedCompleteDate} ({daysLeft} days left)</span>
         </div>
       </div>
 
-      {/* --- SECTION 1: FINANCIAL & USERS --- */}
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial & Admin Overview</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-slate-50 text-slate-600 rounded-lg"><UserCheck size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Active Users</span></div>
-            <div><h3 className="text-2xl font-black text-slate-700">{stats.activeSystemUsers}</h3><p className="text-[10px] text-gray-400 font-bold">System Accounts</p></div>
+      {/* --- SECTION 1: FINANCIAL OVERVIEW (3 Cols) --- */}
+      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial Health</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        
+        {/* 1. SALES (BLUE) */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+                <span className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><ShoppingBag size={20}/></span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Revenue</span>
+            </div>
+            <div>
+                <h3 className="text-2xl font-black text-blue-700">{formatCurrency(stats.sales)}</h3>
+                <div className="flex items-center gap-1 mt-1 text-xs font-bold text-blue-600/60">
+                    <ArrowUpRight size={14} /> <span>Sales Record</span>
+                </div>
+            </div>
         </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-rose-50 text-rose-600 rounded-lg"><TrendingDown size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Expenses</span></div>
-            <div><h3 className="text-xl font-black text-rose-700">{formatCurrency(stats.expenses)}</h3><p className="text-[10px] text-gray-400 font-bold">Total Cost</p></div>
+
+        {/* 2. NET PROFIT (GREEN) */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${netIncome >= 0 ? 'from-emerald-50 to-transparent' : 'from-red-50 to-transparent'} rounded-bl-full -mr-4 -mt-4`}></div>
+            <div className="flex justify-between items-start relative z-10">
+                <span className={`p-2.5 rounded-xl ${netIncome >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}><Wallet size={20}/></span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Net Profit</span>
+            </div>
+            <div className="relative z-10">
+                <h3 className={`text-2xl font-black ${netIncome >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatCurrency(netIncome)}</h3>
+                <p className="text-[10px] text-gray-400 font-bold mt-1">Realized Gain/Loss</p>
+            </div>
         </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><ShoppingBag size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Sales</span></div>
-            <div><h3 className="text-xl font-black text-emerald-700">{formatCurrency(stats.sales)}</h3><p className="text-[10px] text-gray-400 font-bold">Total Revenue</p></div>
+
+        {/* 3. EXPENSES (RED) */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start">
+                <span className="p-2.5 bg-red-50 text-red-600 rounded-xl"><TrendingDown size={20}/></span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Expenses</span>
+            </div>
+            <div>
+                <h3 className="text-2xl font-black text-red-700">{formatCurrency(stats.expenses)}</h3>
+                <div className="flex items-center gap-1 mt-1 text-xs font-bold text-red-600/60">
+                    <ArrowDownRight size={14} /> <span>Operational Cost</span>
+                </div>
+            </div>
         </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Wallet size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Net Profit</span></div>
-            <div><h3 className={`text-xl font-black ${netIncome >= 0 ? 'text-blue-700' : 'text-red-600'}`}>{formatCurrency(netIncome)}</h3><p className="text-[10px] text-gray-400 font-bold">Profit / Loss</p></div>
+
+      </div>
+
+      {/* --- SECTION 2: PRODUCTION METRICS (6 Items - Reordered) --- */}
+      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Flock Performance</h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        
+        {/* 1. LIVE POPULATION */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">Live Pop.</span>
+                <Users size={16} className="text-cyan-500" />
+            </div>
+            <h3 className="text-xl font-black text-cyan-700">{currentPop} <span className="text-xs font-normal text-gray-400">heads</span></h3>
+        </div>
+
+        {/* 2. MORTALITY */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">Mortality</span>
+                <Skull size={16} className="text-red-500" />
+            </div>
+            <h3 className="text-xl font-black text-red-600">{ESTIMATED_MORTALITY} <span className="text-xs font-bold text-red-400">({mortalityRate}%)</span></h3>
+        </div>
+
+        {/* 3. USED FEEDS */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">Feed Used</span>
+                <Database size={16} className="text-indigo-500" />
+            </div>
+            <h3 className="text-xl font-black text-indigo-700">{stats.totalFeedKilos.toFixed(1)} <span className="text-xs font-normal text-gray-400">kg</span></h3>
+        </div>
+
+        {/* 4. USED VITAMINS */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">Vitamins</span>
+                <FlaskConical size={16} className="text-teal-500" />
+            </div>
+            <h3 className="text-xl font-black text-teal-700">{stats.totalVitaminGrams.toFixed(1)} <span className="text-xs font-normal text-gray-400">g/ml</span></h3>
+        </div>
+
+        {/* 5. AVERAGE WEIGHT */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+            <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">Avg Weight</span>
+                <Scale size={16} className="text-amber-500" />
+            </div>
+            <h3 className="text-xl font-black text-amber-700">{avgWeight.toFixed(2)} <span className="text-xs font-normal text-gray-400">kg</span></h3>
+        </div>
+
+        {/* 6. FCR */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
+             <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase">F.C.R.</span>
+                <Activity size={16} className="text-purple-500" />
+            </div>
+            <h3 className="text-xl font-black text-purple-700">{fcr}</h3>
         </div>
       </div>
 
-      {/* --- SECTION 2: PRODUCTION METRICS --- */}
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Production Metrics</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Database size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Feed Used</span></div>
-            <div><h3 className="text-2xl font-black text-indigo-700">{stats.totalFeedKilos.toFixed(1)}</h3><p className="text-[10px] text-gray-400 font-bold">Kilograms</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-teal-50 text-teal-600 rounded-lg"><FlaskConical size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Vitamins</span></div>
-            <div><h3 className="text-2xl font-black text-teal-700">{stats.totalVitaminGrams.toFixed(1)}</h3><p className="text-[10px] text-gray-400 font-bold">Grams / ml</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Users size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Started</span></div>
-            <div><h3 className="text-2xl font-black text-gray-800">{startPop}</h3><p className="text-[10px] text-gray-400 font-bold">Heads</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-green-50 text-green-600 rounded-lg"><CheckCircle size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Harvested</span></div>
-            <div><h3 className="text-2xl font-black text-green-700">{stats.qtyHarvested}</h3><p className="text-[10px] text-gray-400 font-bold">Heads Sold</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-red-50 text-red-600 rounded-lg"><Skull size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Mortality</span></div>
-            <div><h3 className="text-2xl font-black text-red-600">{ESTIMATED_MORTALITY}</h3><p className="text-[10px] text-red-400 font-bold">{mortalityRate}% Rate</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-cyan-50 text-cyan-600 rounded-lg"><Users size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Live Birds</span></div>
-            <div><h3 className="text-2xl font-black text-cyan-700">{currentPop}</h3><p className="text-[10px] text-gray-400 font-bold">Current Count</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Scale size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">Net Weight</span></div>
-            <div><h3 className="text-2xl font-black text-amber-700">{totalWeightProduced}</h3><p className="text-[10px] text-gray-400 font-bold">Kilograms</p></div>
-        </div>
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start"><span className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Activity size={18}/></span><span className="text-[10px] font-bold text-gray-400 uppercase">FCR</span></div>
-            <div><h3 className="text-2xl font-black text-gray-400">{fcr}</h3><p className="text-[10px] text-gray-400 font-bold">Target: 1.5 - 1.7</p></div>
-        </div>
-      </div>
-
-      {/* --- FEED CHART WITH MAROON DUAL VIEW TABLE --- */}
+      {/* --- FEED CHART SECTION --- */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
             <div className="flex items-center gap-2"><div className="p-2 bg-indigo-50 rounded-lg"><ChartIcon size={18} className="text-indigo-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption Forecast</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic">Batch Calendar Integration</p></div></div>
@@ -387,12 +484,12 @@ const RealDashboard = () => {
                     <div className="bg-black/20 p-3 rounded-xl border border-white/5"><div className="flex items-center gap-1 text-[9px] font-black text-orange-300 uppercase mb-2"><Sun size={12}/> AM Period</div><div className="flex justify-between items-end"><span className="text-sm font-black">{(todayFeedStats.recommended / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal">kg</span></span><span className="text-sm font-black text-white">{todayFeedStats.actual > (todayFeedStats.recommended / 2) ? (todayFeedStats.recommended / 2).toFixed(2) : todayFeedStats.actual.toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">kg</span></span></div></div>
                     <div className="bg-black/20 p-3 rounded-xl border border-white/5"><div className="flex items-center gap-1 text-[9px] font-black text-indigo-300 uppercase mb-2"><Moon size={12}/> PM Period</div><div className="flex justify-between items-end"><span className="text-sm font-black">{(todayFeedStats.recommended / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal">kg</span></span><span className="text-sm font-black text-white">{todayFeedStats.actual > (todayFeedStats.recommended / 2) ? (todayFeedStats.actual - (todayFeedStats.recommended / 2)).toFixed(2) : '0.00'} <span className="text-[8px] text-white/40 font-normal ml-1">kg</span></span></div></div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-white/10"><div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-2"><span>Daily Coverage</span><span>{((todayFeedStats.actual / todayFeedStats.recommended) * 100).toFixed(0)}%</span></div><div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden"><div className="bg-gradient-to-r from-orange-400 to-red-500 h-full transition-all duration-700" style={{ width: `${Math.min((todayFeedStats.actual / todayFeedStats.recommended) * 100, 100)}%` }} /></div><div className="flex justify-between mt-3 text-[10px] font-black"><span className="text-orange-300 uppercase tracking-tighter">{todayFeedStats.type}</span><span className="text-white">Day {currentBatchDay}</span></div></div>
+                <div className="mt-4 pt-4 border-t border-white/10"><div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-2"><span>Daily Coverage</span><span>{todayFeedStats.recommended > 0 ? ((todayFeedStats.actual / todayFeedStats.recommended) * 100).toFixed(0) : 0}%</span></div><div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden"><div className="bg-gradient-to-r from-orange-400 to-red-500 h-full transition-all duration-700" style={{ width: `${todayFeedStats.recommended > 0 ? Math.min((todayFeedStats.actual / todayFeedStats.recommended) * 100, 100) : 0}%` }} /></div><div className="flex justify-between mt-3 text-[10px] font-black"><span className="text-orange-300 uppercase tracking-tighter">{todayFeedStats.type}</span><span className="text-white">Day {currentBatchDay}</span></div></div>
             </div>
         </div>
       </div>
 
-      {/* --- SECTION 3: CHARTS ROW --- */}
+      {/* --- CHARTS ROW --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* PIE CHART */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
@@ -400,7 +497,7 @@ const RealDashboard = () => {
             <div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expensePieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{expensePieData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => formatCurrency(value)} /><Legend iconType="circle" /></PieChart></ResponsiveContainer></div>
         </div>
 
-        {/* HISTORY COMPARISON BAR CHART (STARTS AT ZERO) */}
+        {/* HISTORY CHART */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 mb-6"><div className="p-2 bg-blue-50 rounded-lg"><BarChart3 size={18} className="text-blue-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">History Comparison</h3><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Net Income Across Batches</p></div></div>
             <div className="h-80 w-full">
@@ -420,6 +517,64 @@ const RealDashboard = () => {
             </div>
         </div>
       </div>
+
+       {/* --- COMPARE MODAL --- */}
+      {showCompareModal && previousBatch && currentMetrics && prevMetrics && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+                <div className="bg-red-900 p-4 text-white flex justify-between items-center">
+                    <h3 className="font-bold text-lg flex items-center gap-2"><GitCompare size={20}/> Batch Comparison</h3>
+                    <button onClick={() => setShowCompareModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={20}/></button>
+                </div>
+                
+                <div className="p-6">
+                    <div className="grid grid-cols-3 text-xs font-bold text-gray-400 uppercase border-b pb-2 mb-2">
+                        <span>Metric</span>
+                        <span className="text-center text-orange-600">{currentMetrics.name} (Current)</span>
+                        <span className="text-center text-gray-600">{prevMetrics.name} (Last)</span>
+                    </div>
+
+                    <div className="space-y-4 text-sm text-gray-700">
+                        {/* 1. Population */}
+                         <div className="grid grid-cols-3 items-center">
+                            <span className="font-bold">Starting Pop.</span>
+                            <span className="text-center font-black">{currentMetrics.population}</span>
+                            <span className="text-center">{prevMetrics.population}</span>
+                        </div>
+
+                        {/* 2. Mortality */}
+                         <div className="grid grid-cols-3 items-center">
+                            <span className="font-bold">Mortality Rate</span>
+                            <div className="text-center flex items-center justify-center gap-1">
+                                <span className={`font-black ${parseFloat(currentMetrics.mortalityRate) > parseFloat(prevMetrics.mortalityRate) ? 'text-red-600' : 'text-green-600'}`}>{currentMetrics.mortalityRate}%</span>
+                                {parseFloat(currentMetrics.mortalityRate) > parseFloat(prevMetrics.mortalityRate) ? <ArrowUpRight size={12} className="text-red-600"/> : <ArrowDownRight size={12} className="text-green-600"/>}
+                            </div>
+                            <span className="text-center">{prevMetrics.mortalityRate}%</span>
+                        </div>
+
+                         {/* 3. FCR */}
+                         <div className="grid grid-cols-3 items-center">
+                            <span className="font-bold">F.C.R.</span>
+                            <div className="text-center flex items-center justify-center gap-1">
+                                <span className={`font-black ${parseFloat(currentMetrics.fcr) > parseFloat(prevMetrics.fcr) ? 'text-red-600' : 'text-green-600'}`}>{currentMetrics.fcr}</span>
+                            </div>
+                            <span className="text-center">{prevMetrics.fcr}</span>
+                        </div>
+                        
+                        {/* 4. Sales */}
+                        <div className="grid grid-cols-3 items-center border-t pt-3">
+                            <span className="font-bold">Total Sales</span>
+                            <div className="text-center flex items-center justify-center gap-1">
+                                <span className={`font-black ${currentMetrics.sales < prevMetrics.sales ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(currentMetrics.sales)}</span>
+                            </div>
+                            <span className="text-center">{formatCurrency(prevMetrics.sales)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 };

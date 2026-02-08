@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# 2. DATA MODELS (SCHEMAS) - ALL PRESERVED
+# 2. DATA MODELS (SCHEMAS)
 # ---------------------------------------------------------
 
 class BatchSchema(BaseModel):
@@ -107,7 +107,7 @@ class UpdateFeedCategorySchema(BaseModel):
     feedType: str 
 
 # ---------------------------------------------------------
-# 3. AUTHENTICATION & LOGIN (FLAT STRUCTURE & ADMIN CHECK)
+# 3. AUTHENTICATION & LOGIN
 # ---------------------------------------------------------
 
 @app.post("/register-user")
@@ -120,7 +120,6 @@ async def register_user(data: dict, authorization: str = Header(None)):
         decoded_token = auth.verify_id_token(token)
         uid = decoded_token['uid']
 
-        # FIXED: Removed /profile for a FLAT structure and set role to ADMIN
         user_ref = db.reference(f'users/{uid}')
         user_ref.set({
             "firstName": data.get("firstName"),
@@ -137,10 +136,6 @@ async def register_user(data: dict, authorization: str = Header(None)):
 
 @app.post("/verify-login")
 async def verify_login(authorization: str = Header(None)):
-    """
-    Checks if the user logging in has the ADMIN role. 
-    If not, access is denied.
-    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
@@ -148,8 +143,6 @@ async def verify_login(authorization: str = Header(None)):
     try:
         decoded_token = auth.verify_id_token(token)
         uid = decoded_token['uid']
-        
-        # Get data from flat structure
         user_data = db.reference(f'users/{uid}').get()
         
         if not user_data or user_data.get("role") != "admin":
@@ -168,7 +161,6 @@ async def admin_create_user(data: UserRegisterSchema, authorization: str = Heade
             password=data.password,
             display_name=data.username
         )
-        # FIXED: Removed /profile for a FLAT structure
         user_ref = db.reference(f'users/{user_record.uid}')
         user_ref.set({
             "firstName": data.firstName,
@@ -191,7 +183,6 @@ async def get_users(authorization: str = Header(None)):
         users_list = []
         if snapshot:
             for uid, data in snapshot.items():
-                # FIXED: Reads directly from UID (Flat structure)
                 data['uid'] = uid
                 users_list.append(data)
         return users_list
@@ -208,7 +199,7 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 4. BATCH MANAGEMENT - ALL PRESERVED
+# 4. BATCH MANAGEMENT
 # ---------------------------------------------------------
 
 @app.post("/create-batch")
@@ -275,17 +266,25 @@ async def delete_batch(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail=str(e))
 
 # ---------------------------------------------------------
-# 5. MESSAGING - ALL PRESERVED
+# 5. MESSAGING
 # ---------------------------------------------------------
 
 @app.post("/admin-send-message")
 async def admin_send_message(data: MessageSchema, authorization: str = Header(None)):
     try:
+        recipient_data = db.reference(f'users/{data.recipientUid}').get()
+        current_status = "sent"
+        
+        if recipient_data and recipient_data.get("status") == "online":
+            current_status = "delivered"
+
         db.reference(f'chats/{data.recipientUid}').push({
             "text": data.text,
             "sender": "admin",
             "timestamp": int(time.time() * 1000),
-            "isEdited": False
+            "isEdited": False,
+            "status": current_status,
+            "seen": False
         })
         return {"status": "success"}
     except Exception as e:
@@ -309,7 +308,7 @@ async def admin_delete_message(data: DeleteMessageSchema, authorization: str = H
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 6. EXPENSES & SALES - ALL PRESERVED
+# 6. EXPENSES & SALES
 # ---------------------------------------------------------
 
 @app.post("/add-expense")
@@ -429,7 +428,7 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 7. FEED LOGIC & TEMPERATURE - ALL PRESERVED
+# 7. FEED LOGIC & WEATHER (UPDATED FOR DAY/NIGHT)
 # ---------------------------------------------------------
 
 FEED_LOGIC = [
@@ -467,20 +466,28 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
 
 @app.get("/get-temperature")
 async def get_temperature(lat: float = 10.68, lon: float = 122.95):
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code"
+    # ADDED: is_day parameter to the API query
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             data = response.json()
             current = data.get("current", {})
-            return {
+            
+            weather_payload = {
                 "temperature": current.get("temperature_2m"),
                 "humidity": current.get("relative_humidity_2m"),
                 "weatherCode": current.get("weather_code"),
-                "unit": "°C"
+                "isDay": current.get("is_day"), # 1 = Day, 0 = Night
+                "unit": "°C",
+                "last_updated": int(time.time() * 1000)
             }
+            db.reference('current_weather').set(weather_payload)
+            return weather_payload
     except Exception as e:
-        return {"temperature": 0, "humidity": 0, "weatherCode": None, "unit": "°C"}
+        print(f"Weather Update Error: {e}")
+        db_data = db.reference('current_weather').get()
+        return db_data if db_data else {"temperature": 0, "humidity": 0, "weatherCode": None, "isDay": 1, "unit": "°C"}
 
 if __name__ == "__main__":
     import uvicorn
