@@ -5,7 +5,7 @@ import {
   LineChart as ChartIcon, Activity, 
   FlaskConical, Wallet, PieChart as PieIcon,
   Clock, Sun, Moon, BarChart3, ArrowUpRight, ArrowDownRight,
-  GitCompare, X
+  GitCompare, X, Eye
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
@@ -15,18 +15,111 @@ import {
   PieChart, Pie, Cell, ReferenceLine, BarChart, Bar
 } from 'recharts';
 
+// --- SUB-COMPONENT: REUSABLE METRIC CARD WITH HOVER GRAPH ---
+const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barColor, prevValue, isCurrency = false, isInverse = false }) => {
+  const formattedValue = isCurrency 
+    ? new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value)
+    : value;
+
+  const graphData = [
+    { name: 'Last', value: Number(prevValue) || 0, color: '#94a3b8' }, // Gray
+    { name: 'Now', value: Number(value) || 0, color: barColor }       // Colored
+  ];
+
+  // Determine if trend is "Good" (Green) or "Bad" (Red)
+  const diff = Number(value) - Number(prevValue);
+  const isBetter = isInverse ? diff < 0 : diff > 0;
+  
+  const CustomGraphTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-2 border border-gray-200 shadow-lg rounded-lg text-xs z-50">
+          <p className="font-semibold text-gray-700">{payload[0].payload.name}</p>
+          <p className="text-gray-900 font-bold">
+            {isCurrency ? '₱' : ''}{Number(payload[0].value).toLocaleString()} {unit && !isCurrency ? unit : ''}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="relative group bg-white rounded-2xl shadow-sm border border-gray-100 h-36 transition-all duration-300">
+      
+      {/* --- STATE 1: NORMAL VIEW --- */}
+      <div className="absolute inset-0 p-5 flex flex-col justify-between">
+        <div className="flex justify-between items-start">
+          <span className={`p-2.5 rounded-xl ${bgClass} ${colorClass}`}>
+            <Icon size={20}/>
+          </span>
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
+        </div>
+        <div>
+          <h3 className={`text-2xl font-black ${colorClass.replace('text-', 'text-opacity-90 text-')}`}>
+            {formattedValue} <span className="text-xs font-normal text-gray-400">{unit}</span>
+          </h3>
+          <div className="flex items-center gap-1 mt-1 text-xs font-bold opacity-60">
+             {/* Simple trend indicator */}
+             {prevValue !== undefined && prevValue !== 0 ? (
+                <>
+                  {isBetter ? <ArrowUpRight size={14} className="text-green-600"/> : <ArrowDownRight size={14} className="text-red-600"/>}
+                  <span className={isBetter ? 'text-green-600' : 'text-red-600'}>
+                     vs Last Batch
+                  </span>
+                </>
+             ) : <span className="text-gray-400">No data</span>}
+          </div>
+        </div>
+        {/* HINT ICON */}
+        <div className={`absolute top-5 right-5 opacity-20 group-hover:opacity-40 transition-opacity ${colorClass}`}>
+           <Eye size={16} />
+        </div>
+      </div>
+
+      {/* --- STATE 2: HOVER MODAL VIEW --- */}
+      <div className="absolute inset-0 z-50 bg-white rounded-2xl shadow-2xl p-4 opacity-0 invisible group-hover:visible group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 border-2 border-gray-100 flex flex-col">
+          <div className="flex justify-between items-center mb-1 pb-2 border-b border-gray-50">
+            <p className="text-[10px] font-black text-gray-600 uppercase">{title} Comparison</p>
+            <span className={`text-[9px] text-white px-1.5 py-0.5 rounded font-bold`} style={{ backgroundColor: barColor }}>VS LAST</span>
+          </div>
+          <div className="flex-1 w-full h-full min-h-0 pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={graphData} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
+                {/* 1. DARKER GRID LINES */}
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                {/* 2. VISIBLE AXIS LINE */}
+                <XAxis dataKey="name" axisLine={{ stroke: '#cbd5e1' }} tickLine={false} tick={{ fontSize: 9, fill: '#64748b', fontWeight: 700 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={(val) => val >= 1000 ? `${val/1000}k` : val} />
+                <Tooltip content={<CustomGraphTooltip />} cursor={{ fill: '#f8fafc', opacity: 0.5 }} />
+                {/* 3. REFERENCE LINE (The "Line" you wanted to see) */}
+                <ReferenceLine y={Number(prevValue)} stroke="#94a3b8" strokeDasharray="3 3" />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={35}>
+                  {graphData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+      </div>
+    </div>
+  );
+};
+
+
 const RealDashboard = () => {
   const [activeBatch, setActiveBatch] = useState(null);
-  const [previousBatch, setPreviousBatch] = useState(null); // NEW: Store previous batch
+  const [previousBatch, setPreviousBatch] = useState(null); 
   const [allBatchesData, setAllBatchesData] = useState([]); 
   const [forecastData, setForecastData] = useState([]);
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  const [showCompareModal, setShowCompareModal] = useState(false); // NEW: Modal State
+  const [showCompareModal, setShowCompareModal] = useState(false); 
 
   // --- CONSTANTS ---
-  const ESTIMATED_MORTALITY = 0; // Replace with real DB value if available
+  const ESTIMATED_MORTALITY = 0; 
   const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 
   // --- DERIVED STATS ---
@@ -57,23 +150,20 @@ const RealDashboard = () => {
     const unsubscribe = onValue(batchesRef, (snapshot) => {
       if (snapshot.exists()) {
         const allBatches = snapshot.val();
-        // Sort batches by date created (descending) to find the "Last" batch easily
         const batchList = Object.entries(allBatches)
           .map(([id, data]) => ({ id, ...data }))
           .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated));
         
         const firstActive = batchList.find(b => b.status === 'active');
-        // Find the most recent COMPLETED batch for comparison
         const lastCompleted = batchList.find(b => b.status === 'completed');
 
         setActiveBatch(firstActive);
-        setPreviousBatch(lastCompleted); // Set the previous batch
+        setPreviousBatch(lastCompleted); 
         setAllBatchesData(batchList);
 
         let totalExp = 0, totalSales = 0, feedKilos = 0, vitaminGrams = 0, harvestedHeads = 0;
 
         if (firstActive) {
-          // --- CALCULATE REGULAR EXPENSES ---
           if (firstActive.expenses) {
             Object.values(firstActive.expenses).forEach(exp => {
               const cost = (Number(exp.amount) * Number(exp.quantity || 1));
@@ -81,7 +171,6 @@ const RealDashboard = () => {
             });
           }
 
-          // --- CALCULATE USED FEEDS ---
           if (firstActive.usedFeeds) {
             Object.values(firstActive.usedFeeds).forEach(f => {
               feedKilos += Number(f.quantity || 0);
@@ -89,7 +178,6 @@ const RealDashboard = () => {
             });
           }
 
-          // --- CALCULATE USED VITAMINS ---
           if (firstActive.usedVitamins) {
             Object.values(firstActive.usedVitamins).forEach(v => {
               vitaminGrams += Number(v.quantity || 0);
@@ -144,9 +232,8 @@ const RealDashboard = () => {
   const getBatchMetrics = (batch) => {
     if (!batch) return null;
 
-    let sales = 0, expenses = 0, harvestQty = 0, feedKilos = 0;
+    let sales = 0, expenses = 0, harvestQty = 0, feedKilos = 0, vitaminGrams = 0;
     
-    // Calculate totals for the batch passed in
     if (batch.sales) {
        Object.values(batch.sales).forEach(s => {
           sales += Number(s.totalAmount || 0);
@@ -160,13 +247,19 @@ const RealDashboard = () => {
             expenses += (Number(f.pricePerUnit || 0) * Number(f.quantity || 0));
         });
     }
-    if (batch.usedVitamins) Object.values(batch.usedVitamins).forEach(v => expenses += (Number(v.pricePerUnit || 0) * Number(v.quantity || 0)));
+    if (batch.usedVitamins) {
+        Object.values(batch.usedVitamins).forEach(v => {
+            vitaminGrams += Number(v.quantity || 0);
+            expenses += (Number(v.pricePerUnit || 0) * Number(v.quantity || 0));
+        });
+    }
 
     const startPop = batch.startingPopulation || 0;
     const mortalityRate = startPop > 0 ? ((ESTIMATED_MORTALITY / startPop) * 100).toFixed(1) : 0;
-    // Estimated FCR logic
     const estWeight = (startPop - ESTIMATED_MORTALITY) * 1.5; 
     const fcr = estWeight > 0 ? (feedKilos / estWeight).toFixed(2) : "0.00";
+    
+    const finalPop = startPop;
 
     return {
         name: batch.batchName,
@@ -176,7 +269,10 @@ const RealDashboard = () => {
         profit: sales - expenses,
         mortalityRate: mortalityRate,
         fcr: fcr,
-        harvested: harvestQty
+        harvested: harvestQty,
+        feedKilos: feedKilos,
+        vitaminGrams: vitaminGrams,
+        finalPop: finalPop
     };
   };
 
@@ -288,18 +384,18 @@ const RealDashboard = () => {
   const startPop = activeBatch.startingPopulation || 0;
   const currentPop = startPop - stats.qtyHarvested - ESTIMATED_MORTALITY;
   const mortalityRate = startPop > 0 ? ((ESTIMATED_MORTALITY / startPop) * 100).toFixed(1) : 0;
-  
-  // Avg Weight (Placeholder if not tracked, assuming 1.5kg avg for FCR calc)
-  const avgWeight = 0.00; // Replace with real data if you track daily weights
-  
-  // FCR: Total Feed / ((Current Birds * Avg Weight) + (Harvested Birds * Avg Harvest Weight))
+  const avgWeight = 0.00; 
   const estimatedTotalBiomass = (currentPop * 1.5) + (stats.qtyHarvested * 1.6);
   const fcr = estimatedTotalBiomass > 0 ? (stats.totalFeedKilos / estimatedTotalBiomass).toFixed(2) : "0.00";
-
   const progress = calculateProgress(activeBatch.dateCreated, activeBatch.expectedCompleteDate);
   const daysLeft = getRemainingDays(activeBatch.expectedCompleteDate);
 
-  const CustomTooltip = ({ active, payload, label }) => {
+  // --- COMPARISON LOGIC ---
+  const currentMetrics = getBatchMetrics(activeBatch);
+  const prevMetrics = getBatchMetrics(previousBatch);
+
+  // --- CUSTOM TOOLTIP FOR FEED CHART ---
+  const CustomFeedTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
@@ -312,10 +408,6 @@ const RealDashboard = () => {
     }
     return null;
   };
-
-  // --- COMPARISON LOGIC ---
-  const currentMetrics = getBatchMetrics(activeBatch);
-  const prevMetrics = getBatchMetrics(previousBatch);
 
   return (
     <div className="flex-1 bg-gray-50 -mt-7 p-4 overflow-y-auto pb-20 relative">
@@ -353,106 +445,122 @@ const RealDashboard = () => {
       <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial Health</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         
-        {/* 1. SALES (BLUE) */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start">
-                <span className="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><ShoppingBag size={20}/></span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Revenue</span>
-            </div>
-            <div>
-                <h3 className="text-2xl font-black text-blue-700">{formatCurrency(stats.sales)}</h3>
-                <div className="flex items-center gap-1 mt-1 text-xs font-bold text-blue-600/60">
-                    <ArrowUpRight size={14} /> <span>Sales Record</span>
-                </div>
-            </div>
-        </div>
+        {/* 1. SALES (BLUE) - WITH HOVER */}
+        <MetricCard 
+          title="Total Revenue" 
+          value={stats.sales} 
+          prevValue={prevMetrics ? prevMetrics.sales : 0} 
+          icon={ShoppingBag} 
+          colorClass="text-blue-700" 
+          bgClass="bg-blue-50" 
+          barColor="#2563eb" 
+          isCurrency={true}
+        />
 
-        {/* 2. NET PROFIT (GREEN) */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow relative overflow-hidden">
-            <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${netIncome >= 0 ? 'from-emerald-50 to-transparent' : 'from-red-50 to-transparent'} rounded-bl-full -mr-4 -mt-4`}></div>
-            <div className="flex justify-between items-start relative z-10">
-                <span className={`p-2.5 rounded-xl ${netIncome >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}><Wallet size={20}/></span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Net Profit</span>
-            </div>
-            <div className="relative z-10">
-                <h3 className={`text-2xl font-black ${netIncome >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{formatCurrency(netIncome)}</h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-1">Realized Gain/Loss</p>
-            </div>
-        </div>
+        {/* 2. NET PROFIT (GREEN/RED) - WITH HOVER */}
+        <MetricCard 
+          title="Net Profit" 
+          value={netIncome} 
+          prevValue={prevMetrics ? prevMetrics.profit : 0} 
+          icon={Wallet} 
+          colorClass={netIncome >= 0 ? "text-emerald-700" : "text-red-700"} 
+          bgClass={netIncome >= 0 ? "bg-emerald-50" : "bg-red-50"} 
+          barColor={netIncome >= 0 ? "#10b981" : "#ef4444"} 
+          isCurrency={true}
+        />
 
-        {/* 3. EXPENSES (RED) */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-36 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start">
-                <span className="p-2.5 bg-red-50 text-red-600 rounded-xl"><TrendingDown size={20}/></span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Expenses</span>
-            </div>
-            <div>
-                <h3 className="text-2xl font-black text-red-700">{formatCurrency(stats.expenses)}</h3>
-                <div className="flex items-center gap-1 mt-1 text-xs font-bold text-red-600/60">
-                    <ArrowDownRight size={14} /> <span>Operational Cost</span>
-                </div>
-            </div>
-        </div>
-
+        {/* 3. EXPENSES (RED) - WITH HOVER */}
+        <MetricCard 
+          title="Total Expenses" 
+          value={stats.expenses} 
+          prevValue={prevMetrics ? prevMetrics.expenses : 0} 
+          icon={TrendingDown} 
+          colorClass="text-red-700" 
+          bgClass="bg-red-50" 
+          barColor="#dc2626" 
+          isCurrency={true}
+          isInverse={true} // Lower is better
+        />
       </div>
 
-      {/* --- SECTION 2: PRODUCTION METRICS (6 Items - Reordered) --- */}
+      {/* --- SECTION 2: PRODUCTION METRICS (6 Items) - ALL WITH HOVER --- */}
       <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Flock Performance</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         
         {/* 1. LIVE POPULATION */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Live Pop.</span>
-                <Users size={16} className="text-cyan-500" />
-            </div>
-            <h3 className="text-xl font-black text-cyan-700">{currentPop} <span className="text-xs font-normal text-gray-400">heads</span></h3>
-        </div>
+        <MetricCard 
+          title="Live Pop." 
+          value={currentPop} 
+          prevValue={prevMetrics ? prevMetrics.harvested : 0} // Comparing vs Last Batch Harvested
+          unit="heads"
+          icon={Users} 
+          colorClass="text-cyan-700" 
+          bgClass="bg-cyan-50" 
+          barColor="#0891b2"
+        />
 
         {/* 2. MORTALITY */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Mortality</span>
-                <Skull size={16} className="text-red-500" />
-            </div>
-            <h3 className="text-xl font-black text-red-600">{ESTIMATED_MORTALITY} <span className="text-xs font-bold text-red-400">({mortalityRate}%)</span></h3>
-        </div>
+        <MetricCard 
+          title="Mortality" 
+          value={ESTIMATED_MORTALITY} 
+          prevValue={prevMetrics ? (prevMetrics.population * (prevMetrics.mortalityRate/100)) : 0} 
+          unit="heads"
+          icon={Skull} 
+          colorClass="text-red-600" 
+          bgClass="bg-red-50" 
+          barColor="#dc2626"
+          isInverse={true}
+        />
 
         {/* 3. USED FEEDS */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Feed Used</span>
-                <Database size={16} className="text-indigo-500" />
-            </div>
-            <h3 className="text-xl font-black text-indigo-700">{stats.totalFeedKilos.toFixed(1)} <span className="text-xs font-normal text-gray-400">kg</span></h3>
-        </div>
+        <MetricCard 
+          title="Feed Used" 
+          value={stats.totalFeedKilos} 
+          prevValue={prevMetrics ? prevMetrics.feedKilos : 0} 
+          unit="kg"
+          icon={Database} 
+          colorClass="text-indigo-700" 
+          bgClass="bg-indigo-50" 
+          barColor="#4f46e5"
+        />
 
         {/* 4. USED VITAMINS */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Vitamins</span>
-                <FlaskConical size={16} className="text-teal-500" />
-            </div>
-            <h3 className="text-xl font-black text-teal-700">{stats.totalVitaminGrams.toFixed(1)} <span className="text-xs font-normal text-gray-400">g/ml</span></h3>
-        </div>
+        <MetricCard 
+          title="Vitamins" 
+          value={stats.totalVitaminGrams} 
+          prevValue={prevMetrics ? prevMetrics.vitaminGrams : 0} 
+          unit="g/ml"
+          icon={FlaskConical} 
+          colorClass="text-teal-700" 
+          bgClass="bg-teal-50" 
+          barColor="#0d9488"
+        />
 
         {/* 5. AVERAGE WEIGHT */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-            <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Avg Weight</span>
-                <Scale size={16} className="text-amber-500" />
-            </div>
-            <h3 className="text-xl font-black text-amber-700">{avgWeight.toFixed(2)} <span className="text-xs font-normal text-gray-400">kg</span></h3>
-        </div>
+        <MetricCard 
+          title="Avg Weight" 
+          value={avgWeight} 
+          prevValue={0} // No historical data for weight in this logic yet
+          unit="kg"
+          icon={Scale} 
+          colorClass="text-amber-700" 
+          bgClass="bg-amber-50" 
+          barColor="#d97706"
+        />
 
         {/* 6. FCR */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:scale-[1.02] transition-transform">
-             <div className="flex justify-between items-start mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">F.C.R.</span>
-                <Activity size={16} className="text-purple-500" />
-            </div>
-            <h3 className="text-xl font-black text-purple-700">{fcr}</h3>
-        </div>
+        <MetricCard 
+          title="F.C.R." 
+          value={fcr} 
+          prevValue={prevMetrics ? prevMetrics.fcr : 0} 
+          unit=""
+          icon={Activity} 
+          colorClass="text-purple-700" 
+          bgClass="bg-purple-50" 
+          barColor="#7e22ce"
+          isInverse={true}
+        />
+
       </div>
 
       {/* --- FEED CHART SECTION --- */}
@@ -472,7 +580,7 @@ const RealDashboard = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={forecastData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                     <defs><linearGradient id="feedColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient></defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><Tooltip content={<CustomTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} /><Area name="Feed Intake" type="monotone" dataKey="targetKilos" stroke="#6366f1" fill="url(#feedColor)" strokeWidth={3} /><ReferenceLine x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: 'Today', fill: '#f97316', fontSize: 10, fontWeight: 'bold' }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><Tooltip content={<CustomFeedTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} /><Area name="Feed Intake" type="monotone" dataKey="targetKilos" stroke="#6366f1" fill="url(#feedColor)" strokeWidth={3} /><ReferenceLine x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: 'Today', fill: '#f97316', fontSize: 10, fontWeight: 'bold' }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -503,7 +611,7 @@ const RealDashboard = () => {
             <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={historyComparisonData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
                         <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} domain={[0, 'auto']} tickFormatter={(value) => `₱${value/1000}k`} />
                         <Tooltip formatter={(value) => [formatCurrency(value), 'Net Income']} contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
