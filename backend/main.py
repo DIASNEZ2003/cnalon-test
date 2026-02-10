@@ -6,11 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict, Any
 import time
 import httpx
+import math
+from datetime import datetime, timedelta
 
 # ---------------------------------------------------------
 # 1. SETUP & INITIALIZATION
 # ---------------------------------------------------------
-# Ensure your serviceAccountKey.json is in the same directory
 cred = credentials.Certificate("serviceAccountKey.json")
 
 if not firebase_admin._apps:
@@ -29,7 +30,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# 2. DATA MODELS (SCHEMAS)
+# 2. DATA MODELS
 # ---------------------------------------------------------
 
 class BatchSchema(BaseModel):
@@ -107,20 +108,66 @@ class UpdateFeedCategorySchema(BaseModel):
     category: str
     feedType: str 
 
+class VitaminLogSchema(BaseModel):
+    batchId: str
+    day: int
+    vitaminName: str
+    actualAmount: float
+
 # ---------------------------------------------------------
-# 3. AUTHENTICATION & LOGIN
+# 3. KNOWLEDGE BASE (THE "BRAIN")
+# ---------------------------------------------------------
+
+# Feed Intake Curve (Kg per 1000 birds)
+# We use this to calculate the "Size" of the bird.
+FEED_LOGIC_TEMPLATE = [
+    (range(1, 2), 12.0, "Booster"),   # Day 1: Tiny intake
+    (range(2, 4), 16.0, "Booster"),
+    (range(4, 7), 23.0, "Booster"),
+    (range(7, 11), 35.0, "Booster"),
+    (range(11, 14), 55.0, "Starter"), 
+    (range(14, 17), 75.0, "Starter"),
+    (range(17, 20), 95.0, "Starter"),
+    (range(20, 23), 115.0, "Finisher"),
+    (range(23, 26), 135.0, "Finisher"),
+    (range(26, 28), 155.0, "Finisher"),
+    (range(28, 31), 170.0, "Finisher"), # Day 30: Max intake
+]
+
+# STANDARD EFFICIENT DOSAGE (Per 1,000 Adult Birds)
+# The system scales this down for chicks to save money.
+# Example: "vetracin" is 100g for 1000 Adults. 
+# For 1000 Chicks (Day 1), it will only recommend ~7g (Efficiency).
+MEDICATION_DB = {
+    # Antibiotics / Soluble Powders
+    "vetracin": {"adult_dose": 100.0, "unit": "g"}, 
+    "amox": {"adult_dose": 100.0, "unit": "g"},
+    "doxy": {"adult_dose": 100.0, "unit": "g"},
+    "electrolytes": {"adult_dose": 60.0, "unit": "g"}, # Lighter dose
+    "vitamin": {"adult_dose": 60.0, "unit": "g"},
+    
+    # Liquids
+    "multivitamins": {"adult_dose": 100.0, "unit": "ml"},
+    "broncho": {"adult_dose": 120.0, "unit": "ml"},
+    
+    # Vaccines (Fixed - 1 vial usually covers 1000 regardless of age)
+    "gumboro": {"fixed_dose": 1.0, "unit": "vial"},
+    "newcastle": {"fixed_dose": 1.0, "unit": "vial"},
+    "ncd": {"fixed_dose": 1.0, "unit": "vial"},
+}
+
+# ---------------------------------------------------------
+# 4. AUTHENTICATION
 # ---------------------------------------------------------
 
 @app.post("/register-user")
 async def register_user(data: dict, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized: No token provided")
-    
+        raise HTTPException(status_code=401, detail="Unauthorized")
     token = authorization.split("Bearer ")[1]
     try:
         decoded_token = auth.verify_id_token(token)
         uid = decoded_token['uid']
-
         user_ref = db.reference(f'users/{uid}')
         user_ref.set({
             "firstName": data.get("firstName"),
@@ -139,16 +186,13 @@ async def register_user(data: dict, authorization: str = Header(None)):
 async def verify_login(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
     token = authorization.split("Bearer ")[1]
     try:
         decoded_token = auth.verify_id_token(token)
         uid = decoded_token['uid']
         user_data = db.reference(f'users/{uid}').get()
-        
         if not user_data or user_data.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Access denied: Admin only.")
-            
+            raise HTTPException(status_code=403, detail="Access denied")
         return {"status": "success", "user": user_data}
     except Exception as e:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -157,11 +201,7 @@ async def verify_login(authorization: str = Header(None)):
 async def admin_create_user(data: UserRegisterSchema, authorization: str = Header(None)):
     try:
         email = f"{data.username}@poultry.com"
-        user_record = auth.create_user(
-            email=email,
-            password=data.password,
-            display_name=data.username
-        )
+        user_record = auth.create_user(email=email, password=data.password, display_name=data.username)
         user_ref = db.reference(f'users/{user_record.uid}')
         user_ref.set({
             "firstName": data.firstName,
@@ -200,24 +240,11 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 4. BATCH MANAGEMENT
+# 5. BATCH & FORECAST LOGIC
 # ---------------------------------------------------------
 
-# Standard Feed Logic Template
-FEED_LOGIC_TEMPLATE = [
-    (range(1, 2), 0.60, "Booster"), (range(2, 4), 0.70, "Booster"),
-    (range(4, 7), 0.80, "Booster"), (range(7, 11), 0.90, "Booster"),
-    (range(11, 14), 1.00, "Starter"), (range(14, 17), 1.20, "Starter"),
-    (range(17, 20), 1.40, "Starter"), (range(20, 22), 1.50, "Starter"),
-    (range(22, 24), 1.60, "Starter"), (range(24, 25), 2.00, "Finisher"),
-    (range(25, 26), 2.40, "Finisher"), (range(26, 27), 2.60, "Finisher"),
-    (range(27, 28), 3.00, "Finisher"), (range(28, 29), 3.20, "Finisher"),
-    (range(29, 31), 3.40, "Finisher"),
-]
-
-# Helper function to generate forecast data
 def generate_forecast_data(starting_population: int):
-    multiplier = starting_population / 1000
+    ratio = starting_population / 1000.0
     forecast_data = []
     
     for day in range(1, 31):
@@ -226,7 +253,7 @@ def generate_forecast_data(starting_population: int):
             forecast_data.append({
                 "day": day,
                 "feedType": f_match[2],
-                "targetKilos": round(f_match[1] * multiplier, 2)
+                "targetKilos": round(f_match[1] * ratio, 2)
             })
     return forecast_data
 
@@ -237,15 +264,11 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     token = authorization.split("Bearer ")[1]
     try:
         auth.verify_id_token(token)
-        
-        # 1. Prepare Batch Reference
         ref_batch = db.reference('global_batches')
         new_batch_ref = ref_batch.push()
         
-        # 2. Generate Feed Forecast Immediately
         forecast_list = generate_forecast_data(data.startingPopulation)
         
-        # 3. Save Batch WITH Forecast inside it
         new_batch_ref.set({
             "batchName": data.batchName,
             "dateCreated": data.dateCreated,
@@ -253,10 +276,9 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
             "startingPopulation": data.startingPopulation,
             "vitaminBudget": data.vitaminBudget,
             "status": "active",
-            "feedForecast": forecast_list  # <--- Stored directly in DB
+            "feedForecast": forecast_list
         })
-        
-        return {"status": "success", "message": "Batch created with forecast"}
+        return {"status": "success", "message": "Batch created"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -286,7 +308,7 @@ async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: st
         auth.verify_id_token(token)
         ref_batch = db.reference(f'global_batches/{batch_id}')
         ref_batch.update({"status": data.status})
-        return {"status": "success", "message": "Batch status updated"}
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -298,23 +320,20 @@ async def delete_batch(batch_id: str, authorization: str = Header(None)):
     try:
         auth.verify_id_token(token)
         db.reference(f'global_batches/{batch_id}').delete()
-        return {"status": "success", "message": "Batch deleted"}
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
 # ---------------------------------------------------------
-# 5. MESSAGING
+# 6. MESSAGING
 # ---------------------------------------------------------
-
 @app.post("/admin-send-message")
 async def admin_send_message(data: MessageSchema, authorization: str = Header(None)):
     try:
         recipient_data = db.reference(f'users/{data.recipientUid}').get()
         current_status = "sent"
-        
         if recipient_data and recipient_data.get("status") == "online":
             current_status = "delivered"
-
         db.reference(f'chats/{data.recipientUid}').push({
             "text": data.text,
             "sender": "admin",
@@ -345,9 +364,8 @@ async def admin_delete_message(data: DeleteMessageSchema, authorization: str = H
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 6. EXPENSES & SALES
+# 7. EXPENSES & SALES
 # ---------------------------------------------------------
-
 @app.post("/add-expense")
 async def add_expense(data: ExpenseSchema, authorization: str = Header(None)):
     try:
@@ -465,49 +483,194 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 7. FEED LOGIC & WEATHER (AUTO-SAVE FORECAST)
+# 8. EFFICIENT INVENTORY ENGINE (Expense-Based & Population-Scaled)
+# ---------------------------------------------------------
+
+@app.post("/log-vitamin-usage")
+async def log_vitamin_usage(data: VitaminLogSchema, authorization: str = Header(None)):
+    try:
+        safe_name = data.vitaminName.replace(".", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_")
+        ref = db.reference(f'global_batches/{data.batchId}/vitamin_logs/{data.day}/{safe_name}')
+        ref.set(data.actualAmount)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/get-vitamin-logs/{batch_id}")
+async def get_vitamin_logs(batch_id: str, authorization: str = Header(None)):
+    try:
+        snapshot = db.reference(f'global_batches/{batch_id}/vitamin_logs').get()
+        return snapshot if snapshot else {}
+    except Exception as e:
+        return {}
+
+@app.get("/get-inventory-forecast/{batch_id}")
+async def get_inventory_forecast(batch_id: str, authorization: str = Header(None)):
+    """
+    EFFICIENT FORECASTING ALGORITHM
+    1. Check Population.
+    2. Check what was bought (Expense Name & Qty).
+    3. Calculate daily need: (Adult_Standard * Population_Ratio * Growth_Factor).
+       - Chick (Day 1) needs ~7% of adult dose.
+       - Adult (Day 30) needs 100% of adult dose.
+    4. Deduct from inventory until it runs out.
+    """
+    try:
+        # 1. Get Batch Info
+        batch_ref = db.reference(f'global_batches/{batch_id}')
+        batch_data = batch_ref.get()
+        if not batch_data:
+            raise HTTPException(status_code=404, detail="Batch not found")
+        
+        population = batch_data.get('startingPopulation', 0)
+        batch_start_date = batch_data.get('dateCreated')
+        
+        # Scaling Ratio (e.g., 500 birds = 0.5 of standard)
+        pop_ratio = population / 1000.0
+
+        # Max Feed at Day 30 is approx 170g (used for scaling calculation)
+        MAX_ADULT_FEED = 170.0 
+
+        # 2. Get Expenses
+        expenses_ref = db.reference(f'global_batches/{batch_id}/expenses')
+        expenses_snapshot = expenses_ref.get()
+        
+        dynamic_forecast = []
+        
+        if expenses_snapshot and batch_start_date:
+            start_date_obj = datetime.strptime(batch_start_date, "%Y-%m-%d")
+
+            for key, item in expenses_snapshot.items():
+                cat = item.get('category', '').lower()
+                name = item.get('itemName', '').lower()
+                expense_date_str = item.get('date')
+                
+                # Only process Medicines
+                if "vitamin" in cat or "medicine" in cat or "vaccine" in cat:
+                    
+                    # A. Determine Standard Efficient Dosage (Per 1000 Adults)
+                    adult_dose = 0.0
+                    fixed_dose = 0.0
+                    found_unit = item.get('unit', 'g')
+                    is_scalable = True # True = grows with age, False = fixed per bird
+
+                    matched_key = None
+                    for db_key in MEDICATION_DB.keys():
+                        if db_key in name:
+                            matched_key = db_key
+                            break
+                    
+                    if matched_key:
+                        med_info = MEDICATION_DB[matched_key]
+                        if "adult_dose" in med_info:
+                            adult_dose = med_info["adult_dose"]
+                            is_scalable = True
+                        elif "fixed_dose" in med_info:
+                            fixed_dose = med_info["fixed_dose"]
+                            is_scalable = False
+                        
+                        # Use DB unit if generic
+                        if found_unit == "unit" or found_unit == "units":
+                             found_unit = med_info.get('unit', 'units')
+                    else:
+                        # Fallback for unknown medicine: 50g per 1000 birds (Safe average)
+                        adult_dose = 50.0 
+                        is_scalable = True
+                        if found_unit == "unit" or found_unit == "units":
+                             found_unit = "g"
+
+                    # B. Determine Start Day relative to Batch
+                    current_inventory = float(item.get('quantity', 0))
+                    
+                    if current_inventory > 0 and expense_date_str:
+                        exp_date_obj = datetime.strptime(expense_date_str, "%Y-%m-%d")
+                        diff_obj = exp_date_obj - start_date_obj
+                        start_day_num = diff_obj.days + 1 
+                        if start_day_num < 1: start_day_num = 1 
+
+                        current_day = start_day_num
+                        
+                        # Loop: Simulate daily consumption until stock runs out or Day 45
+                        while current_inventory > 0 and current_day <= 45:
+                            
+                            # 1. Determine Growth Factor (How big are they today?)
+                            # Day 1 chick eats ~12g. Adult eats ~170g. Ratio = 12/170 = 0.07 (7%)
+                            day_feed_intake = 12.0 # Minimum
+                            
+                            f_match = next((item for item in FEED_LOGIC_TEMPLATE if current_day in item[0]), None)
+                            if f_match:
+                                day_feed_intake = f_match[1]
+                            elif current_day > 30:
+                                day_feed_intake = 170.0 # Cap at adult size
+                            
+                            growth_factor = day_feed_intake / MAX_ADULT_FEED
+                            
+                            # 2. Calculate Required Daily Dose
+                            daily_need = 0
+                            
+                            if is_scalable:
+                                # (Adult Dose * Pop Ratio * Growth Factor)
+                                # Example: 100g * 0.5 (500 birds) * 0.07 (Day 1) = 3.5g
+                                daily_need = (adult_dose * pop_ratio) * growth_factor
+                                
+                                # Safety Floor: Never dose less than 10% of adult capacity to ensure efficacy
+                                min_limit = (adult_dose * pop_ratio) * 0.10
+                                if daily_need < min_limit: daily_need = min_limit
+                                
+                            else:
+                                # Vaccines (Fixed)
+                                daily_need = fixed_dose * pop_ratio
+
+                            daily_need = round(daily_need, 2)
+
+                            # 3. Deduct from Inventory
+                            amount_to_use = min(daily_need, current_inventory)
+                            
+                            if amount_to_use > 0:
+                                dynamic_forecast.append({
+                                    "name": item.get('itemName'),
+                                    "startDay": current_day,
+                                    "endDay": current_day, 
+                                    "dailyAmount": amount_to_use,
+                                    "totalQuantity": amount_to_use,
+                                    "unit": found_unit
+                                })
+                            
+                            current_inventory -= amount_to_use
+                            current_day += 1
+
+        return dynamic_forecast
+    except Exception as e:
+        print(f"Inventory Forecast Error: {e}") 
+        return []
+
+# ---------------------------------------------------------
+# 9. UTILITIES
 # ---------------------------------------------------------
 
 @app.get("/get-feed-forecast/{batch_id}")
 async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
-    """
-    Fetches the feed forecast.
-    IMPORTANT: If the batch exists but has no forecast in DB (old batch),
-    this function will generate it AND SAVE IT to the DB automatically.
-    """
     try:
         token = authorization.split("Bearer ")[1]
         auth.verify_id_token(token)
-        
         batch_ref = db.reference(f'global_batches/{batch_id}')
         batch_data = batch_ref.get()
-        
         if not batch_data: 
             raise HTTPException(status_code=404, detail="Batch not found")
 
-        # 1. Check if 'feedForecast' exists in DB
         saved_forecast = batch_data.get('feedForecast')
-
         forecast_list = []
         if saved_forecast:
-            # If it's a list in DB, use it directly
             if isinstance(saved_forecast, list):
                 forecast_list = saved_forecast
             else:
-                # If stored as dict (firebase default for non-sequential keys), convert to list
                 forecast_list = list(saved_forecast.values())
-                # Sort just in case
                 forecast_list.sort(key=lambda x: x['day'])
         else:
-            # 2. AUTO-GENERATE & SAVE if missing (Self-Healing)
             start_pop = batch_data.get('startingPopulation', 0)
             if start_pop > 0:
                 forecast_list = generate_forecast_data(start_pop)
-                
-                # Save to DB so next time it is fetched directly
                 batch_ref.child('feedForecast').set(forecast_list)
-            else:
-                forecast_list = [] # Should not happen if data is valid
 
         return {"batchName": batch_data.get('batchName'), "forecast": forecast_list}
     except Exception as e:
@@ -521,7 +684,6 @@ async def get_temperature(lat: float = 10.68, lon: float = 122.95):
             response = await client.get(url)
             data = response.json()
             current = data.get("current", {})
-            
             weather_payload = {
                 "temperature": current.get("temperature_2m"),
                 "humidity": current.get("relative_humidity_2m"),
@@ -533,7 +695,6 @@ async def get_temperature(lat: float = 10.68, lon: float = 122.95):
             db.reference('current_weather').set(weather_payload)
             return weather_payload
     except Exception as e:
-        print(f"Weather Update Error: {e}")
         db_data = db.reference('current_weather').get()
         return db_data if db_data else {"temperature": 0, "humidity": 0, "weatherCode": None, "isDay": 1, "unit": "°C"}
 

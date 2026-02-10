@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { auth } from '../firebase';
 import { 
   ShoppingBag, Calendar, DollarSign, Tag, 
   FileText, Hash, Edit2, Trash2, PlusCircle, 
-  Check, AlertTriangle, Layers, User, Banknote
+  Check, AlertTriangle, Layers, User, Banknote, Package
 } from 'lucide-react';
 
 // --- SUCCESS MODAL ---
@@ -172,15 +172,22 @@ const Expenses = () => {
     let newFeedType = '';
     let newItemName = formData.itemName;
 
-    if (newCat === 'Feeds') { newFeedType = 'Booster'; } 
+    if (newCat === 'Feeds') { newFeedType = 'Booster'; newSuffix = 'kgs'; } 
     else if (newCat === 'Vitamins') { newSuffix = 'g'; } 
-    else if (newCat === 'Items') { newSuffix = ''; } 
+    else if (newCat === 'Items') { newSuffix = 'pcs'; } 
     else if (newCat === 'Salary') { 
         newSuffix = 'month'; 
         newItemName = ''; 
     }
     
-    setFormData({ ...formData, category: newCat, suffix: newSuffix, feedType: newFeedType, itemName: newItemName, unitValue: newCat === 'Items' ? '1' : formData.unitValue });
+    setFormData({ 
+      ...formData, 
+      category: newCat, 
+      suffix: newSuffix, 
+      feedType: newFeedType, 
+      itemName: newItemName,
+      unitValue: newCat === 'Salary' ? '1' : '' 
+    });
   };
 
   const handleAction = async () => {
@@ -192,9 +199,11 @@ const Expenses = () => {
       const user = auth.currentUser;
       const token = await user.getIdToken();
       
-      // LOGIC: If Items or Salary, unitValue is implicitly 1 so only Count matters
-      const isCountOnly = formData.category === 'Salary' || formData.category === 'Items';
-      const qty = isCountOnly ? (parseFloat(formData.count) || 1) : (parseFloat(formData.count) || 0) * (parseFloat(formData.unitValue) || 1);
+      const isCountOnly = formData.category === 'Salary';
+      // Calculate Total Quantity
+      const qty = isCountOnly 
+        ? (parseFloat(formData.count) || 1) 
+        : (parseFloat(formData.count) || 0) * (parseFloat(formData.unitValue) || 1);
       
       if (type === 'create') {
         const url = editMode ? `${backendUrl}/edit-expense` : `${backendUrl}/add-expense`;
@@ -252,26 +261,28 @@ const Expenses = () => {
         itemName: item.itemName, 
         description: item.description || '', 
         amount: item.amount, 
-        count: item.category === 'Items' ? item.quantity : '1', 
-        unitValue: item.category === 'Items' ? '1' : item.quantity, 
+        count: '1', 
+        unitValue: item.quantity, 
         suffix: item.unit, 
         date: item.date 
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const filteredExpenses = filter === 'All' ? expenses : expenses.filter(i => i.category === filter);
   const totalSpent = filteredExpenses.reduce((sum, i) => sum + (parseFloat(i.quantity || 0) * parseFloat(i.amount || 0)), 0);
 
   return (
-    <div className="bg-gray-50 min-h-full font-sans text-gray-800 p-4">
+    // MAIN CONTAINER: Fixed Height
+    <div className="bg-gray-50 h-[calc(100vh-100px)] w-full overflow-hidden font-sans text-gray-800 p-4">
       <SuccessModal message={successMessage} onClose={() => setSuccessMessage('')} />
       <ConfirmModal isOpen={confirmModal.isOpen} type={confirmModal.type} onCancel={() => setConfirmModal({...confirmModal, isOpen: false})} onConfirm={handleAction} />
       <FeedTypeModal isOpen={feedModal.isOpen} onClose={() => setFeedModal({isOpen: false, targetId: null})} onSelect={quickSetCategory} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 sticky top-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
+        
+        {/* --- LEFT COLUMN: FORM --- */}
+        <div className="lg:col-span-1 h-full overflow-y-auto pr-2 custom-scrollbar">
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
             <div className={`p-5 ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm"><PlusCircle className="text-white h-6 w-6" /></div>
@@ -284,6 +295,7 @@ const Expenses = () => {
 
             <form onSubmit={(e) => { e.preventDefault(); setConfirmModal({isOpen: true, type: 'create'}); }} className="p-6 space-y-4">
               
+              {/* Category */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Category</label>
                 <div className="relative">
@@ -297,6 +309,7 @@ const Expenses = () => {
                 </div>
               </div>
 
+              {/* Item Name */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
                   {formData.category === 'Salary' ? 'Select Staff' : 'Item Name'}
@@ -307,39 +320,86 @@ const Expenses = () => {
                       <User className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
                       <select required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})}>
                         <option value="">Choose Staff Member...</option>
-                        {usersList.map((u) => <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>)}
+                        {usersList
+                          .filter(u => u.role !== 'admin')
+                          .map((u) => <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>)
+                        }
                       </select>
                     </>
                   ) : (
                     <>
                       <FileText className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                      <input type="text" required placeholder="e.g. Chicken Wire" className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})} />
+                      <input type="text" required placeholder="e.g. Vetracin" className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})} />
                     </>
                   )}
                 </div>
               </div>
               
-              <div className={`grid gap-3 ${formData.category === 'Items' || formData.category === 'Salary' ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                {formData.category !== 'Salary' && (
+              <div className="grid grid-cols-2 gap-3">
+                  {/* Field 1: Quantity / Count */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Quantity</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">
+                        {formData.category === 'Salary' ? 'Months' : 'Qty (Pila kabuok)'}
+                    </label>
                     <div className="relative">
-                      <Hash className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                      <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.count} onChange={(e) => setFormData({...formData, count: e.target.value})} />
+                      <Package className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+                      <input 
+                        type="number" 
+                        required 
+                        className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        value={formData.count} 
+                        onChange={(e) => setFormData({...formData, count: e.target.value})} 
+                      />
                     </div>
                   </div>
-                )}
 
-                {/* MODIFIED: Completely Hide "Size / Unit" section for Items and Salary */}
-                {formData.category !== 'Salary' && formData.category !== 'Items' && (
-                  <div className="space-y-1 animate-fade-in">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Size / Unit</label>
-                    <div className="relative flex">
-                      <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-l-xl block p-3 outline-none font-bold" value={formData.unitValue} onChange={(e) => setFormData({...formData, unitValue: e.target.value})} />
-                      <span className="bg-gray-200 text-gray-600 font-bold p-3 rounded-r-xl text-xs border-y border-r border-gray-200 flex items-center justify-center min-w-[3.5rem] uppercase">{formData.suffix}</span>
+                  {/* Field 2: Size per Item + Unit Selector */}
+                  {formData.category !== 'Salary' && (
+                    <div className="space-y-1 animate-fade-in">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">Size (Pila ka kg/ml?)</label>
+                        <div className="relative flex">
+                            {/* The Number Input (Value) - NO ICON, MORE SPACE */}
+                            <div className="relative w-full">
+                                <input 
+                                    type="number" 
+                                    required 
+                                    placeholder={formData.category === 'Feeds' ? "50" : "100"}
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-l-xl block pl-3 p-3 outline-none font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                                    value={formData.unitValue} 
+                                    onChange={(e) => setFormData({...formData, unitValue: e.target.value})} 
+                                />
+                            </div>
+                            
+                            {/* The Unit Selector (Dropdown) - FIXED WIDTH */}
+                            <select 
+                                value={formData.suffix} 
+                                onChange={(e) => setFormData({...formData, suffix: e.target.value})}
+                                className="bg-gray-200 text-gray-700 font-bold px-1 rounded-r-xl text-xs border-y border-r border-gray-200 outline-none cursor-pointer hover:bg-gray-300 transition-colors uppercase w-20 text-center"
+                            >
+                                {formData.category === 'Feeds' ? (
+                                    <>
+                                        <option value="kgs">KGS</option>
+                                        <option value="lbs">LBS</option>
+                                    </>
+                                ) : formData.category === 'Vitamins' ? (
+                                    <>
+                                        <option value="g">G</option>
+                                        <option value="ml">ML</option>
+                                        <option value="l">L</option>
+                                        <option value="mg">MG</option>
+                                    </>
+                                ) : (
+                                    <>
+                                        <option value="pcs">PCS</option>
+                                        <option value="roll">ROLL</option>
+                                        <option value="set">SET</option>
+                                        <option value="kgs">KGS</option>
+                                    </>
+                                )}
+                            </select>
+                        </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -349,7 +409,13 @@ const Expenses = () => {
                   </label>
                   <div className="relative">
                     {formData.category === 'Salary' ? <Banknote className="absolute left-3 top-3 text-gray-400 h-4 w-4" /> : <DollarSign className="absolute left-3 top-3 text-gray-400 h-4 w-4" />}
-                    <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
+                    <input 
+                      type="number" 
+                      required 
+                      className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl block pl-10 p-3 outline-none font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                      value={formData.amount} 
+                      onChange={(e) => setFormData({...formData, amount: e.target.value})} 
+                    />
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -372,8 +438,10 @@ const Expenses = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="flex justify-between items-end border-b border-gray-200 mb-6 pb-4">
+        {/* --- RIGHT COLUMN: LIST (Scrollable) --- */}
+        <div className="lg:col-span-2 h-full flex flex-col overflow-hidden">
+          
+          <div className="flex justify-between items-end border-b border-gray-200 mb-4 pb-4 px-1 shrink-0">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A] mb-3"><ShoppingBag className="h-5 w-5" /> Batch Expenses</h2>
               <div className="flex flex-wrap gap-2">
@@ -390,7 +458,7 @@ const Expenses = () => {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-20 custom-scrollbar">
             {expenses.length === 0 ? <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-12 text-center text-gray-400 font-bold uppercase tracking-tighter">No Expenses Logged</div> : filteredExpenses.map((item) => (
               <div key={item.id} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col md:flex-row justify-between items-center gap-4 overflow-hidden">
                 <div className="p-5 flex-1 w-full">
@@ -404,8 +472,7 @@ const Expenses = () => {
                         <h3 className="font-black text-gray-800 text-lg uppercase tracking-tight leading-none mb-1">{item.itemName}</h3>
                         <p className="text-xs font-bold text-gray-400">
                             {item.quantity}
-                            {/* MODIFIED: Hide unit suffix for Items in list */}
-                            {item.category !== 'Items' && <span className="text-[10px] ml-0.5">{item.unit}</span>}
+                            {item.category !== 'Items' && <span className="text-[10px] ml-0.5 uppercase">{item.unit}</span>}
                         </p>
                       </div>
                       <div className="text-right"><p className="text-lg font-black text-[#3B0A0A]">₱{(parseFloat(item.quantity || 0) * parseFloat(item.amount || 0)).toLocaleString()}</p></div>

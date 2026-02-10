@@ -5,14 +5,14 @@ import {
   LineChart as ChartIcon, Activity, 
   FlaskConical, Wallet, PieChart as PieIcon,
   Clock, Sun, Moon, BarChart3, ArrowUpRight, ArrowDownRight,
-  GitCompare, X, Eye
+  GitCompare, X, Eye, Pill, HeartPulse, CheckCircle
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Legend,
-  PieChart, Pie, Cell, ReferenceLine, BarChart, Bar
+  PieChart, Pie, Cell, ReferenceLine, BarChart, Bar, ComposedChart
 } from 'recharts';
 
 // --- SUB-COMPONENT: REUSABLE METRIC CARD WITH HOVER GRAPH ---
@@ -62,12 +62,12 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
           <div className="flex items-center gap-1 mt-1 text-xs font-bold opacity-60">
              {/* Simple trend indicator */}
              {prevValue !== undefined && prevValue !== 0 ? (
-                <>
-                  {isBetter ? <ArrowUpRight size={14} className="text-green-600"/> : <ArrowDownRight size={14} className="text-red-600"/>}
-                  <span className={isBetter ? 'text-green-600' : 'text-red-600'}>
+               <>
+                 {isBetter ? <ArrowUpRight size={14} className="text-green-600"/> : <ArrowDownRight size={14} className="text-red-600"/>}
+                 <span className={isBetter ? 'text-green-600' : 'text-red-600'}>
                      vs Last Batch
-                  </span>
-                </>
+                 </span>
+               </>
              ) : <span className="text-gray-400">No data</span>}
           </div>
         </div>
@@ -113,6 +113,7 @@ const RealDashboard = () => {
   const [previousBatch, setPreviousBatch] = useState(null); 
   const [allBatchesData, setAllBatchesData] = useState([]); 
   const [forecastData, setForecastData] = useState([]);
+  const [inventoryForecast, setInventoryForecast] = useState([]); // Stores the dynamic forecast
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
@@ -142,7 +143,7 @@ const RealDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Load Data
+  // 2. Load Data (Firebase Realtime)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -204,20 +205,32 @@ const RealDashboard = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 3. Load Feed Forecast
+  // 3. Load Forecasts (Feed & Inventory)
   useEffect(() => {
-    const getForecast = async () => {
+    const getForecasts = async () => {
       if (activeBatch && activeBatch.id && currentUser) {
         setLoadingForecast(true);
         try {
           const token = await currentUser.getIdToken();
-          const response = await fetch(`${backendUrl}/get-feed-forecast/${activeBatch.id}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+          
+          // A. Feed Forecast
+          const feedRes = await fetch(`${backendUrl}/get-feed-forecast/${activeBatch.id}`, { 
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } 
           });
-          if (!response.ok) throw new Error('Failed to fetch');
-          const result = await response.json();
-          setForecastData(result.forecast);
+          if (feedRes.ok) {
+              const res = await feedRes.json();
+              setForecastData(res.forecast);
+          }
+
+          // B. Inventory Forecast (Dynamic from Expenses)
+          const invRes = await fetch(`${backendUrl}/get-inventory-forecast/${activeBatch.id}`, { 
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } 
+          });
+          if (invRes.ok) {
+              const invData = await invRes.json();
+              setInventoryForecast(invData);
+          }
+
         } catch (err) {
           console.error("Forecast Error:", err);
         } finally {
@@ -225,7 +238,7 @@ const RealDashboard = () => {
         }
       }
     };
-    getForecast();
+    getForecasts();
   }, [activeBatch, currentUser]);
 
   // --- HELPER: CALCULATE METRICS FOR ANY BATCH ---
@@ -304,6 +317,66 @@ const RealDashboard = () => {
         type: recommendation ? recommendation.feedType : 'N/A'
     };
   }, [activeBatch, forecastData, currentBatchDay]);
+
+  // --- UPDATED: VITAMIN CHART DATA (Includes Unit & 30-Day Limit) ---
+  const dailyVitaminChartData = useMemo(() => {
+      // Prioritize Inventory Forecast (Dynamic), fall back to saved (Static)
+      const sourceData = (inventoryForecast.length > 0) ? inventoryForecast : (activeBatch?.vitaminForecast || []);
+      
+      const MAX_DAYS = 30; // Changed from 35 to 30 as requested
+      const data = [];
+      
+      for(let d=1; d<=MAX_DAYS; d++){
+          // Find active items for this day
+          const activeItems = sourceData.filter(item => d >= item.startDay && d <= item.endDay);
+          
+          let totalDosage = 0;
+          let names = [];
+          // Capture the unit of the first active item to display in graph
+          let displayUnit = "";
+          
+          activeItems.forEach(i => {
+              totalDosage += i.dailyAmount;
+              names.push(i.name);
+              if(!displayUnit && i.unit) displayUnit = i.unit;
+          });
+          
+          data.push({
+              day: d,
+              dosage: totalDosage,
+              activeNames: names.join(', '),
+              count: activeItems.length,
+              unit: displayUnit || "units"
+          });
+      }
+      return data;
+  }, [activeBatch, inventoryForecast]);
+
+  // Calculate Today's Vitamin Status
+  const todayVitaminStats = useMemo(() => {
+      if (!currentBatchDay) return { names: [], totalTarget: 0, actual: 0 };
+      
+      const sourceData = (inventoryForecast.length > 0) ? inventoryForecast : (activeBatch?.vitaminForecast || []);
+      
+      // Target
+      const activeItems = sourceData.filter(item => currentBatchDay >= item.startDay && currentBatchDay <= item.endDay);
+      const totalTarget = activeItems.reduce((acc, curr) => acc + curr.dailyAmount, 0);
+      
+      // Actual (From Yellow Box Logs)
+      let actualUsed = 0;
+      if (activeBatch?.vitamin_logs && activeBatch.vitamin_logs[currentBatchDay]) {
+          const logs = activeBatch.vitamin_logs[currentBatchDay];
+          actualUsed = Object.values(logs).reduce((a, b) => a + Number(b), 0);
+      }
+      
+      return {
+          names: activeItems.map(i => i.name),
+          totalTarget: totalTarget,
+          actual: actualUsed,
+          unit: activeItems.length > 0 ? activeItems[0].unit : ''
+      };
+  }, [activeBatch, inventoryForecast, currentBatchDay]);
+
 
   // --- LOGIC FOR HISTORY COMPARISON BAR CHART ---
   const historyComparisonData = useMemo(() => {
@@ -394,7 +467,7 @@ const RealDashboard = () => {
   const currentMetrics = getBatchMetrics(activeBatch);
   const prevMetrics = getBatchMetrics(previousBatch);
 
-  // --- CUSTOM TOOLTIP FOR FEED CHART ---
+  // --- CUSTOM TOOLTIPS ---
   const CustomFeedTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -409,6 +482,22 @@ const RealDashboard = () => {
     return null;
   };
 
+  // UPDATED: Now shows the real unit (g/ml) instead of "units"
+  const CustomVitaminTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      if (data.dosage === 0) return null;
+      return (
+        <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-100 z-50">
+          <p className="text-[10px] font-bold text-gray-400 uppercase">Day {label}</p>
+          <p className="text-xs font-black text-teal-600 mb-1">{data.activeNames}</p>
+          <p className="text-[10px] font-bold text-gray-500">Total Dose: {data.dosage.toFixed(1)} {data.unit}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="flex-1 bg-gray-50 -mt-7 p-4 overflow-y-auto pb-20 relative">
       
@@ -417,7 +506,7 @@ const RealDashboard = () => {
         <div className="relative z-10 flex justify-between items-start mb-4">
           <div>
             <div className="flex items-center gap-2">
-               <Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase tracking-wide">{activeBatch.batchName}</h1>
+               <Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase">{activeBatch.batchName}</h1>
                {/* --- COMPARE BUTTON --- */}
                {previousBatch && (
                    <button 
@@ -442,12 +531,12 @@ const RealDashboard = () => {
       </div>
 
       {/* --- SECTION 1: FINANCIAL OVERVIEW (3 Cols) --- */}
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial Health</h2>
+      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial Overview</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         
         {/* 1. SALES (BLUE) - WITH HOVER */}
         <MetricCard 
-          title="Total Revenue" 
+          title="Total Sales" 
           value={stats.sales} 
           prevValue={prevMetrics ? prevMetrics.sales : 0} 
           icon={ShoppingBag} 
@@ -484,7 +573,7 @@ const RealDashboard = () => {
       </div>
 
       {/* --- SECTION 2: PRODUCTION METRICS (6 Items) - ALL WITH HOVER --- */}
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Flock Performance</h2>
+      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Batch Performance</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         
         {/* 1. LIVE POPULATION */}
@@ -563,10 +652,10 @@ const RealDashboard = () => {
 
       </div>
 
-      {/* --- FEED CHART SECTION (Forecast Day 1 to 30) --- */}
+      {/* --- SECTION 3: FEED CHART SECTION --- */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            <div className="flex items-center gap-2"><div className="p-2 bg-indigo-50 rounded-lg"><ChartIcon size={18} className="text-indigo-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption Forecast</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic">Batch Calendar Integration</p></div></div>
+            <div className="flex items-center gap-2"><div className="p-2 bg-indigo-50 rounded-lg"><ChartIcon size={18} className="text-indigo-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption Forecast</h3><p className="text-[10px] text-gray-400 font-bold uppercase italic"></p></div></div>
             <div className="flex flex-wrap gap-2 text-xs">
                 {['Booster', 'Starter', 'Finisher'].map(type => (
                     <div key={type} className="px-3 py-1 bg-gray-50 rounded-lg border border-gray-100"><span className="block text-[9px] font-bold text-gray-400 uppercase">{type}</span><span className="font-black text-gray-700 text-sm">{feedBreakdown[type].toFixed(1)}</span></div>
@@ -597,11 +686,95 @@ const RealDashboard = () => {
         </div>
       </div>
 
+      {/* --- SECTION 4: VITAMIN & MEDICINE FORECAST (NEW) --- */}
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
+            <div className="flex items-center gap-2">
+                <div className="p-2 bg-teal-50 rounded-lg"><Pill size={18} className="text-teal-600" /></div>
+                <div>
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Vitamins Consumption Forecast</h3>
+                  
+                </div>
+            </div>
+            
+            {/* Status Badge */}
+
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* --- Chart --- */}
+            <div className="lg:col-span-3 h-52 w-full">
+               <ResponsiveContainer width="100%" height="100%">
+                 <ComposedChart data={dailyVitaminChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
+                    <Tooltip content={<CustomVitaminTooltip />} />
+                    <Bar dataKey="dosage" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={15} name="Dosage (Units/g)" />
+                    <ReferenceLine x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" />
+                 </ComposedChart>
+               </ResponsiveContainer>
+            </div>
+
+            {/* --- Today's Medicine Panel --- */}
+            <div className="lg:col-span-1 bg-teal-900 rounded-2xl p-4 shadow-xl text-white flex flex-col justify-between">
+                <div>
+                    <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-3">
+                        <Activity size={14} className="text-teal-400" />
+                        <h4 className="text-[10px] font-black uppercase tracking-widest">Active Today (D{currentBatchDay})</h4>
+                    </div>
+                    
+                    {todayVitaminStats.names.length > 0 ? (
+                        <div className="space-y-3">
+                             <div className="bg-black/20 p-3 rounded-xl border border-white/5">
+                                <span className="block text-[9px] font-bold text-teal-300 uppercase mb-1">Required Meds</span>
+                                <div className="text-sm font-black text-white leading-tight">
+                                    {todayVitaminStats.names.join(', ')}
+                                </div>
+                             </div>
+                             
+                             <div className="grid grid-cols-2 gap-2">
+                                 <div className="bg-white/10 p-2 rounded-lg text-center">
+                                     <span className="block text-[8px] uppercase font-bold text-white/50">Target</span>
+                                     <span className="block text-lg font-black">{todayVitaminStats.totalTarget.toFixed(1)}</span>
+                                 </div>
+                                 <div className={`p-2 rounded-lg text-center border ${todayVitaminStats.actual >= todayVitaminStats.totalTarget ? 'bg-teal-600 border-teal-500' : 'bg-orange-600 border-orange-500'}`}>
+                                     <span className="block text-[8px] uppercase font-bold text-white/80">Actual</span>
+                                     <span className="block text-lg font-black">{todayVitaminStats.actual.toFixed(1)}</span>
+                                 </div>
+                             </div>
+                        </div>
+                    ) : (
+                        <div className="h-24 flex flex-col items-center justify-center opacity-50 text-center">
+                            <CheckCircle size={32} className="mb-2" />
+                            <p className="text-xs font-bold uppercase">No Meds Required Today</p>
+                        </div>
+                    )}
+                </div>
+                
+                {todayVitaminStats.names.length > 0 && (
+                    <div className="mt-3">
+                        <div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-1">
+                            <span>Compliance</span>
+                            <span>{((todayVitaminStats.actual / (todayVitaminStats.totalTarget || 1)) * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                            <div 
+                                className={`h-full transition-all duration-700 ${todayVitaminStats.actual >= todayVitaminStats.totalTarget ? 'bg-teal-400' : 'bg-orange-500'}`} 
+                                style={{ width: `${Math.min(((todayVitaminStats.actual / (todayVitaminStats.totalTarget || 1)) * 100), 100)}%` }} 
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+      </div>
+
       {/* --- CHARTS ROW --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* PIE CHART */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 mb-6"><div className="p-2 bg-rose-50 rounded-lg"><PieIcon size={18} className="text-rose-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Expense Distribution</h3><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Category Breakdown</p></div></div>
+            <div className="flex items-center gap-2 mb-6"><div className="p-2 bg-rose-50 rounded-lg"><PieIcon size={18} className="text-rose-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Expense Overview</h3><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest"></p></div></div>
             <div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expensePieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{expensePieData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => formatCurrency(value)} /><Legend iconType="circle" /></PieChart></ResponsiveContainer></div>
         </div>
 
