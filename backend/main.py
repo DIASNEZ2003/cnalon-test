@@ -87,6 +87,7 @@ class ExpenseSchema(BaseModel):
     description: str
     amount: float
     quantity: float
+    remaining: Optional[float] = None # <--- ADDED: To track remaining stock
     unit: str
     date: str
 
@@ -99,6 +100,7 @@ class EditExpenseSchema(BaseModel):
     description: str
     amount: float
     quantity: float
+    remaining: Optional[float] = None # <--- ADDED: To allow updating remaining stock
     unit: str
     date: str
 
@@ -135,16 +137,14 @@ FEED_LOGIC_TEMPLATE = [
 ]
 
 # STANDARD EFFICIENT DOSAGE (Per 1,000 Adult Birds)
-# The system scales this down for chicks to save money.
-# Example: "vetracin" is 100g for 1000 Adults. 
-# For 1000 Chicks (Day 1), it will only recommend ~7g (Efficiency).
+# UPDATED: Increased base dosages to ensure accurate forecasting for large populations.
 MEDICATION_DB = {
     # Antibiotics / Soluble Powders
     "vetracin": {"adult_dose": 100.0, "unit": "g"}, 
     "amox": {"adult_dose": 100.0, "unit": "g"},
     "doxy": {"adult_dose": 100.0, "unit": "g"},
-    "electrolytes": {"adult_dose": 60.0, "unit": "g"}, # Lighter dose
-    "vitamin": {"adult_dose": 60.0, "unit": "g"},
+    "electrolytes": {"adult_dose": 100.0, "unit": "g"}, # Increased from 60 to 100
+    "vitamin": {"adult_dose": 100.0, "unit": "g"},      # Increased from 60 to 100
     
     # Liquids
     "multivitamins": {"adult_dose": 100.0, "unit": "ml"},
@@ -392,6 +392,7 @@ async def edit_expense(data: EditExpenseSchema, authorization: str = Header(None
             "description": data.description,
             "amount": data.amount,
             "quantity": data.quantity,
+            "remaining": data.remaining, # <--- ADDED: To sync remaining stock
             "unit": data.unit,
             "date": data.date
         })
@@ -511,7 +512,7 @@ async def get_inventory_forecast(batch_id: str, authorization: str = Header(None
     1. Check Population.
     2. Check what was bought (Expense Name & Qty).
     3. Calculate daily need: (Adult_Standard * Population_Ratio * Growth_Factor).
-       - Chick (Day 1) needs ~7% of adult dose.
+       - Chick (Day 1) needs ~20% of adult dose (Updated from 7% to ensure accuracy).
        - Adult (Day 30) needs 100% of adult dose.
     4. Deduct from inventory until it runs out.
     """
@@ -573,8 +574,9 @@ async def get_inventory_forecast(batch_id: str, authorization: str = Header(None
                         if found_unit == "unit" or found_unit == "units":
                              found_unit = med_info.get('unit', 'units')
                     else:
-                        # Fallback for unknown medicine: 50g per 1000 birds (Safe average)
-                        adult_dose = 50.0 
+                        # Fallback for unknown medicine: 
+                        # UPDATED: Increased from 50g to 100g per 1000 birds to prevent under-calculation
+                        adult_dose = 100.0 
                         is_scalable = True
                         if found_unit == "unit" or found_unit == "units":
                              found_unit = "g"
@@ -594,7 +596,6 @@ async def get_inventory_forecast(batch_id: str, authorization: str = Header(None
                         while current_inventory > 0 and current_day <= 45:
                             
                             # 1. Determine Growth Factor (How big are they today?)
-                            # Day 1 chick eats ~12g. Adult eats ~170g. Ratio = 12/170 = 0.07 (7%)
                             day_feed_intake = 12.0 # Minimum
                             
                             f_match = next((item for item in FEED_LOGIC_TEMPLATE if current_day in item[0]), None)
@@ -603,18 +604,22 @@ async def get_inventory_forecast(batch_id: str, authorization: str = Header(None
                             elif current_day > 30:
                                 day_feed_intake = 170.0 # Cap at adult size
                             
+                            # UPDATED LOGIC:
+                            # Chicks consume more water relative to body weight than adults.
+                            # We set a minimum floor of 20% (0.20) for dosage intensity.
                             growth_factor = day_feed_intake / MAX_ADULT_FEED
+                            if growth_factor < 0.20: 
+                                growth_factor = 0.20
                             
                             # 2. Calculate Required Daily Dose
                             daily_need = 0
                             
                             if is_scalable:
                                 # (Adult Dose * Pop Ratio * Growth Factor)
-                                # Example: 100g * 0.5 (500 birds) * 0.07 (Day 1) = 3.5g
                                 daily_need = (adult_dose * pop_ratio) * growth_factor
                                 
-                                # Safety Floor: Never dose less than 10% of adult capacity to ensure efficacy
-                                min_limit = (adult_dose * pop_ratio) * 0.10
+                                # Safety Floor: Never dose less than 20% of adult capacity to ensure efficacy
+                                min_limit = (adult_dose * pop_ratio) * 0.20
                                 if daily_need < min_limit: daily_need = min_limit
                                 
                             else:

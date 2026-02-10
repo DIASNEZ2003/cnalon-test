@@ -218,6 +218,7 @@ const Expenses = () => {
            amount: formData.amount,
            date: formData.date,
            quantity: qty,
+           remaining: qty, // <--- ADDED: Initialize remaining equal to purchased quantity
            unit: formData.suffix 
         };
         
@@ -473,6 +474,12 @@ const Expenses = () => {
                         <p className="text-xs font-bold text-gray-400">
                             {item.quantity}
                             {item.category !== 'Items' && <span className="text-[10px] ml-0.5 uppercase">{item.unit}</span>}
+                            {/* Display Remaining if available */}
+                            {item.remaining !== undefined && (
+                                <span className="block text-[10px] text-teal-600 mt-1">
+                                    Remaining: {item.remaining} {item.unit}
+                                </span>
+                            )}
                         </p>
                       </div>
                       <div className="text-right"><p className="text-lg font-black text-[#3B0A0A]">₱{(parseFloat(item.quantity || 0) * parseFloat(item.amount || 0)).toLocaleString()}</p></div>
