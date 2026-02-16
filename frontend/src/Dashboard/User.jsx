@@ -381,7 +381,7 @@ const UserManagement = () => {
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
             <div className="bg-[#3B0A0A] p-5 flex items-center gap-3">
               <UserPlus className="text-white h-6 w-6" />
-              <h2 className="text-white font-bold text-lg tracking-wide">Add New User</h2>
+              <h2 className="text-white font-bold text-lg tracking-wide">Add New Technician</h2>
             </div>
             <form onSubmit={requestCreate} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">

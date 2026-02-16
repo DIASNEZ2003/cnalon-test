@@ -4,12 +4,14 @@ import { signOut, onAuthStateChanged } from "firebase/auth";
 import { getDatabase, ref, update, get, onValue } from "firebase/database";
 import { supabase } from "../supabaseClient";
 
+// Import your sub-components
 import RealDashboard from "../Dashboard/RealDashboard";  
-import User from "../Dashboard/User";  
+import User from "../Dashboard/User"; 
 import BatchControl from "../Dashboard/BatchControl";
 import Records from "../Dashboard/Records";
 import Expenses from "../Dashboard/Expenses";
 import Sales from "../Dashboard/Sales";
+import Personal from "../Dashboard/Personal"; // Imported
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("Dashboard");
@@ -18,7 +20,7 @@ const Dashboard = () => {
   const [profileImage, setProfileImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   
-  // Dynamic Weather State (Added isDay)
+  // Dynamic Weather State
   const [weatherData, setWeatherData] = useState({ temp: "--", code: null, unit: "°C", isDay: 1 });
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -36,36 +38,31 @@ const Dashboard = () => {
 
   const fileInputRef = useRef(null);
 
+  // --- UPDATED NAVIGATION ITEMS ---
   const navItems = [
     { name: "Dashboard", icon: "/dashboard.png" },
     { name: "Batch Control", icon: "/batch.png" },      
-    { name: "Manage User", icon: "/user.png" },
+    { name: "Manage Technicians", icon: "/user.png" }, 
+    { name: "Manage Personal", icon: "/farmer.png" }, 
     { name: "Sales", icon: "/sales.png" },             
     { name: "Expenses", icon: "/expenses.png" },       
     { name: "Records", icon: "/folder.png" },          
   ];
 
-  // --- HELPER: GET WEATHER UI DETAILS (Day/Night Logic with Blue Night) ---
+  // --- HELPER: SIMPLIFIED WEATHER UI DETAILS ---
   const getWeatherDetails = (code, isDay) => {
-    // NIGHT MODE LOGIC (isDay = 0) - NOW BLUE!
-    if (isDay === 0) {
-        if (code === 0) return { icon: "🌙", label: "Clear Night", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
-        if (code >= 1 && code <= 3) return { icon: "☁️", label: "Cloudy Night", color: "text-indigo-100", bg: "bg-indigo-900 border-indigo-800" };
-        if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-blue-200", bg: "bg-blue-950 border-blue-900" };
-        if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy Night", color: "text-blue-300", bg: "bg-blue-950 border-blue-900" };
-        if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-200", bg: "bg-indigo-950 border-indigo-900" };
-        if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-200", bg: "bg-purple-900 border-purple-800" };
-        return { icon: "🌙", label: "Night", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
+    if (isDay === 0) { // Night
+        if (code === 0) return { icon: "🌙", label: "Clear", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
+        if (code >= 1 && code <= 48) return { icon: "☁️", label: "Cloudy", color: "text-indigo-100", bg: "bg-indigo-900 border-indigo-800" };
+        if (code >= 51 && code <= 82) return { icon: "🌧️", label: "Rainy", color: "text-blue-300", bg: "bg-blue-950 border-blue-900" };
+        if (code >= 95) return { icon: "⛈️", label: "Thunder", color: "text-purple-200", bg: "bg-purple-900 border-purple-800" };
+        return { icon: "🌙", label: "Clear", color: "text-blue-100", bg: "bg-blue-900 border-blue-800" };
     }
-
-    // DAY MODE LOGIC (isDay = 1)
+    // Day
     if (code === 0) return { icon: "☀️", label: "Sunny", color: "text-orange-600", bg: "bg-orange-50 border-orange-100" };
-    if (code >= 1 && code <= 3) return { icon: "🌤️", label: "Partly Cloudy", color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-100" };
-    if (code >= 45 && code <= 48) return { icon: "🌫️", label: "Foggy", color: "text-gray-500", bg: "bg-gray-50 border-gray-200" };
-    if (code >= 51 && code <= 67) return { icon: "🌧️", label: "Rainy", color: "text-blue-600", bg: "bg-blue-50 border-blue-100" };
-    if (code >= 80 && code <= 82) return { icon: "🌦️", label: "Showers", color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-100" };
-    if (code >= 95) return { icon: "⛈️", label: "Stormy", color: "text-purple-600", bg: "bg-purple-50 border-purple-100" };
-    
+    if (code >= 1 && code <= 48) return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50 border-gray-200" };
+    if (code >= 51 && code <= 82) return { icon: "🌧️", label: "Rainy", color: "text-blue-700", bg: "bg-blue-50 border-blue-200" };
+    if (code >= 95) return { icon: "⛈️", label: "Thunder", color: "text-purple-800", bg: "bg-purple-100 border-purple-200" };
     return { icon: "☁️", label: "Cloudy", color: "text-gray-600", bg: "bg-gray-50 border-gray-200" };
   };
 
@@ -74,7 +71,6 @@ const Dashboard = () => {
     const db = getDatabase();
     const weatherRef = ref(db, 'current_weather');
 
-    // REAL-TIME LISTENER: Updates instantly when database changes
     const unsubscribeWeather = onValue(weatherRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
@@ -82,13 +78,12 @@ const Dashboard = () => {
           temp: data.temperature || "--",
           code: data.weatherCode,
           unit: data.unit || "°C",
-          isDay: data.isDay !== undefined ? data.isDay : 1 // Default to Day if missing
+          isDay: data.isDay !== undefined ? data.isDay : 1 
         });
       }
     });
 
-    // Trigger backend to fetch fresh data
-    const triggerUpdate = async (lat = 10.68, lon = 122.95) => {
+    const triggerUpdate = async (lat = 10.6765, lon = 122.9509) => {
       try {
         await fetch(`http://localhost:8000/get-temperature?lat=${lat}&lon=${lon}`);
       } catch (err) {
@@ -96,8 +91,8 @@ const Dashboard = () => {
       }
     };
 
-    triggerUpdate(); // Initial call
-    const interval = setInterval(triggerUpdate, 300000); // Check API every 5 mins
+    triggerUpdate(); 
+    const interval = setInterval(triggerUpdate, 60000); 
 
     return () => {
       unsubscribeWeather(); 
@@ -116,12 +111,8 @@ const Dashboard = () => {
             const data = snapshot.val();
             setProfileImage(data.profileImage || null);
             
-            const nameFromEmail = currentUser.email
-              ? currentUser.email.split("@")[0]
-              : "Admin";
-
+            const nameFromEmail = currentUser.email ? currentUser.email.split("@")[0] : "Admin";
             const displayValue = data.fullName || data.firstName || nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-            
             setFullName(displayValue);
           }
         } catch (error) {
@@ -147,15 +138,11 @@ const Dashboard = () => {
       if (!file) return;
 
       setUploading(true);
-
       const fileExt = file.name.split(".").pop();
       const fileName = `${user.uid}_${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(filePath, file);
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
@@ -204,40 +191,20 @@ const Dashboard = () => {
             title="Change Photo"
           >
             {profileImage ? (
-              <img
-                src={profileImage}
-                alt="Profile"
-                className="w-full h-full object-cover"
-              />
+              <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
             ) : (
-              <span className={`font-bold text-red-900 ${isSidebarOpen ? 'text-3xl' : 'text-lg'}`}>
-                {fullName.charAt(0)}
-              </span>
+              <span className={`font-bold text-red-900 ${isSidebarOpen ? 'text-3xl' : 'text-lg'}`}>{fullName.charAt(0)}</span>
             )}
-            <div
-              className={`absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-200 ${
-                uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              }`}
-            >
-              <span className="text-white text-xs font-bold">
-                {uploading ? "..." : "Edit"}
-              </span>
+            <div className={`absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-200 ${uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+              <span className="text-white text-xs font-bold">{uploading ? "..." : "Edit"}</span>
             </div>
           </div>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageUpload}
-            accept="image/*"
-            className="hidden"
-          />
+          <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
 
           {isSidebarOpen && (
               <div className="mt-4 text-center animate-fade-in">
                 <h2 className="text-xl font-bold tracking-wide whitespace-nowrap overflow-hidden text-ellipsis">{fullName}</h2>
-                <p className="text-xs text-red-200 mt-1 uppercase tracking-wider">
-                    Farm Owner
-                </p>
+                <p className="text-xs text-red-200 mt-1 uppercase tracking-wider">Farm Owner</p>
               </div>
           )}
         </div>
@@ -288,16 +255,12 @@ const Dashboard = () => {
             {activeTab}
           </h1>
 
-          {/* REAL-TIME WEATHER DISPLAY (Day/Night Compatible) */}
+          {/* REAL-TIME WEATHER DISPLAY */}
           {weatherData.temp !== "--" && (
             <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border shadow-sm transition-colors duration-500 ${weatherUI.bg}`}>
-              <span className="text-xl animate-bounce-slow">
-                {weatherUI.icon}
-              </span>
+              <span className="text-xl animate-bounce-slow">{weatherUI.icon}</span>
               <div className="flex flex-col">
-                <span className={`text-[9px] font-bold uppercase tracking-tight ${weatherUI.color}`}>
-                  {weatherUI.label}
-                </span>
+                <span className={`text-[9px] font-bold uppercase tracking-tight ${weatherUI.color}`}>{weatherUI.label}</span>
                 <span className={`font-bold text-sm leading-none ${weatherData.isDay === 0 ? 'text-white' : 'text-gray-800'}`}>
                   {weatherData.temp}{weatherData.unit}
                 </span>
@@ -310,7 +273,8 @@ const Dashboard = () => {
           {/* --- ROUTING LOGIC --- */}
           {activeTab === "Dashboard" && <RealDashboard />}
           {activeTab === "Batch Control" && <BatchControl />}
-          {activeTab === "Manage User" && <User />}
+          {activeTab === "Manage Technicians" && <User />} 
+          {activeTab === "Manage Personal" && <Personal />} {/* ENABLED PERSONAL COMPONENT */}
           {activeTab === "Sales" && <Sales />}
           {activeTab === "Expenses" && <Expenses />}
           {activeTab === "Records" && <Records />}
@@ -322,22 +286,10 @@ const Dashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-96">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Sign Out</h3>
-            <p className="text-gray-500 mb-6">
-              Are you sure you want to exit the dashboard?
-            </p>
+            <p className="text-gray-500 mb-6">Are you sure you want to exit the dashboard?</p>
             <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowLogoutModal(false)}
-                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmLogout}
-                className="px-4 py-2 bg-red-900 text-white font-medium rounded-lg hover:bg-red-800 shadow-md"
-              >
-                Yes, Log Out
-              </button>
+              <button onClick={() => setShowLogoutModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+              <button onClick={confirmLogout} className="px-4 py-2 bg-red-900 text-white font-medium rounded-lg hover:bg-red-800 shadow-md">Yes, Log Out</button>
             </div>
           </div>
         </div>
@@ -348,29 +300,13 @@ const Dashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-80 text-center">
             <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-8 h-8"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 13l4 4L19 7"
-                ></path>
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
               </svg>
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Success!</h3>
             <p className="text-gray-500 mb-6">{modalMessage}</p>
-            <button
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full px-4 py-2 bg-red-900 text-white font-bold rounded-lg hover:bg-red-800"
-            >
-              Continue
-            </button>
+            <button onClick={() => setShowSuccessModal(false)} className="w-full px-4 py-2 bg-red-900 text-white font-bold rounded-lg hover:bg-red-800">Continue</button>
           </div>
         </div>
       )}
