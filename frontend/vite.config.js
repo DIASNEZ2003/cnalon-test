@@ -4,13 +4,13 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 
 export default defineConfig({
-  // base: './' is very important for Electron to find your images/CSS
-  base: './', 
+  base: './', // Ensures assets load correctly in Electron
   plugins: [
     react(),
     electron([
       {
-        entry: 'electron/main.js',
+        // Must match the filename in Step 1
+        entry: 'electron/main.js', 
       },
     ]),
     renderer(),
