@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, User, Package, Pill, HeartPulse, Scale, ClipboardList, Layers, Banknote, 
-  TrendingUp, TrendingDown, Users, CheckCircle, Database, Wallet
+  TrendingUp, TrendingDown, Users, CheckCircle, Database, Wallet, Filter, Calendar
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
@@ -47,8 +47,8 @@ const Records = () => {
     const getUserProfileImage = (name) => {
         if (!name) return null;
         const found = allUsers.find(u => 
-            u.firstName?.toLowerCase() === name.toLowerCase() || 
-            u.username?.toLowerCase() === name.toLowerCase() ||
+            (u.firstName || "").toLowerCase() === name.toLowerCase() || 
+            (u.username || "").toLowerCase() === name.toLowerCase() ||
             (name.toLowerCase() === "admin" && u.role === "admin")
         );
         return found?.profileImage || found?.profilePicture || null;
@@ -62,8 +62,8 @@ const Records = () => {
     const batchStats = useMemo(() => {
         let sales = 0, expenses = 0, feed = 0, vits = 0, mort = 0, harvested = 0, startPop = 0;
         const targetBatches = selectedBatch === "All Batches" 
-            ? Object.values(rawBatches) 
-            : Object.values(rawBatches).filter(b => b.batchName === selectedBatch);
+            ? Object.values(rawBatches || {}) 
+            : Object.values(rawBatches || {}).filter(b => b.batchName === selectedBatch);
 
         targetBatches.forEach(b => {
             startPop += Number(b.startingPopulation || 0);
@@ -118,132 +118,166 @@ const Records = () => {
     const filteredData = allRecords.filter(r => {
         const matchesType = filterType === "All" || r.type === filterType;
         const matchesBatch = selectedBatch === "All Batches" || r.batchName === selectedBatch;
-        const searchStr = (r.batchName + r.subtitle + r.user + r.type).toLowerCase();
+        const searchStr = ((r.batchName || "") + (r.subtitle || "") + (r.user || "") + (r.type || "")).toLowerCase();
         return matchesType && matchesBatch && searchStr.includes(searchQuery.toLowerCase());
     });
 
-    if (loading) return <div className="p-10 font-black text-red-900 text-xl tracking-widest animate-pulse">SYNCING RECORDS...</div>;
+    if (loading) return <div className="p-10 font-black text-[#3B0A0A] text-xl tracking-widest animate-pulse uppercase">Syncing Records...</div>;
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6 mx-0 max-w-[1400px] animate-fade-in p-4">
+        <div className="bg-gray-50 h-full w-full p-6 animate-fade-in font-sans text-gray-800">
             
-            {/* LEFT SIDE: LOGS (STAYS BIG) */}
-            <div className="flex-1">
-                <div className="mb-6 space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-4 top-4 text-gray-400" size={22} />
-                            <input 
-                                type="text" placeholder="Search history..."
-                                className="w-full rounded-2xl border-2 border-gray-100 bg-white py-4 pl-14 pr-4 text-lg font-bold outline-none focus:border-red-900 shadow-sm"
-                                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="relative">
-                            <select 
-                                value={selectedBatch}
-                                onChange={(e) => setSelectedBatch(e.target.value)}
-                                className="appearance-none bg-white border-2 border-gray-100 text-gray-700 font-black text-sm rounded-2xl py-4 pl-6 pr-12 outline-none focus:border-red-900 shadow-sm cursor-pointer"
-                            >
-                                {batchOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                            </select>
-                        </div>
+            {/* --- TOP HEADER & SEARCH BAR --- */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex items-center gap-4 flex-1">
+                    <div className="p-2.5 bg-red-50 rounded-xl">
+                        <ClipboardList size={22} className="text-[#3B0A0A]" />
                     </div>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
-                        {FILTER_TYPES.map((type) => (
-                            <button key={type} onClick={() => setFilterType(type)} className={`rounded-xl px-8 py-3 text-sm font-black uppercase border transition-all ${filterType === type ? 'bg-red-900 text-white border-red-900 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>{type}</button>
-                        ))}
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input 
+                            type="text" 
+                            placeholder="Search historical logs..." 
+                            className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-900 outline-none text-xs transition-all font-medium"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                     </div>
                 </div>
-
-                <div className="space-y-3">
-                    {filteredData.map((item) => {
-                        const userImg = getUserProfileImage(item.user);
-                        return (
-                            <div key={item.id} className="flex items-center rounded-[32px] border border-gray-100 bg-white p-5 shadow-sm hover:border-red-200 transition-all group">
-                                <div className="mr-6 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-50 border border-gray-100">
-                                    {item.type === 'Feed' && <Package size={28} className="text-orange-600" />}
-                                    {item.type === 'Vitamins' && <Pill size={28} className="text-blue-600" />}
-                                    {item.type === 'Mortality' && <HeartPulse size={28} className="text-red-600" />}
-                                    {item.type === 'Weight' && <Scale size={28} className="text-purple-600" />}
-                                    {item.type === 'Sales' && <Banknote size={28} className="text-emerald-600" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-xs font-black uppercase text-gray-400 tracking-widest">{item.date}</span>
-                                        <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase ${item.type === 'Sales' ? 'text-emerald-700 bg-emerald-50' : 'text-red-900 bg-red-50'}`}>{item.type}</span>
-                                    </div>
-                                    <h3 className="truncate text-lg font-black text-gray-800 uppercase tracking-tight leading-none mb-1">{item.batchName}</h3>
-                                    <p className="truncate text-base font-bold text-gray-500">{item.subtitle}</p>
-                                </div>
-                                <div className="ml-6 shrink-0 flex items-center gap-3 px-4 py-2 rounded-2xl bg-gray-50 border border-gray-100 transition-all">
-                                    <div className="w-10 h-10 rounded-full bg-white overflow-hidden border-2 border-white shadow-md flex items-center justify-center">
-                                        {userImg ? <img src={userImg} className="w-full h-full object-cover" /> : <User size={20} className="text-gray-300" />}
-                                    </div>
-                                    <span className="text-xs font-black text-gray-600 tracking-tight">@{item.user}</span>
-                                </div>
-                            </div>
-                        );
-                    })}
+                
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                        <Filter size={14} className="text-gray-400" />
+                        <select 
+                            className="bg-transparent text-[11px] font-bold outline-none cursor-pointer" 
+                            value={selectedBatch} 
+                            onChange={(e) => setSelectedBatch(e.target.value)}
+                        >
+                            {batchOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                        <Layers size={14} className="text-gray-400" />
+                        <select 
+                            className="bg-transparent text-[11px] font-bold outline-none cursor-pointer"
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                        >
+                            {FILTER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            {/* RIGHT SIDE: ANALYTICS (CORNER ALIGNED & SMALLER) */}
-            <div className="w-full lg:w-72 shrink-0">
-                <div className="sticky top-4 space-y-4">
-                    <div className="bg-[#3B0A0A] p-6 rounded-[35px] shadow-2xl text-white border border-white/5 relative overflow-hidden">
-                        <div className="relative z-10">
-                            <h2 className="text-[9px] font-black uppercase text-orange-400 tracking-[3px] mb-1">{selectedBatch}</h2>
-                            <h1 className="text-xl font-black mb-6 tracking-tighter">Quick Stats</h1>
-                            
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                    <div className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Sales</span></div>
-                                    <span className="text-base font-black text-emerald-400">₱{batchStats.sales.toLocaleString()}</span>
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+                
+                {/* --- MAIN DATA TABLE --- */}
+                <div className="xl:col-span-3 space-y-6">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50/50 border-b border-gray-100">
+                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Entry Details</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Performed By</th>
+                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {filteredData.length === 0 ? (
+                                        <tr><td colSpan="4" className="py-20 text-center text-gray-300 text-xs font-medium uppercase tracking-widest">No matching history found</td></tr>
+                                    ) : filteredData.map((item) => {
+                                        const userImg = getUserProfileImage(item.user);
+                                        return (
+                                            <tr key={item.id} className="hover:bg-gray-50/40 transition-colors group">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[10px] text-red-900 font-bold uppercase tracking-wider mb-0.5">{item.batchName}</span>
+                                                        <span className="text-sm font-black text-gray-800 tracking-tight uppercase">{item.subtitle}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${
+                                                        item.type === 'Sales' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'
+                                                    }`}>
+                                                        {item.type}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center">
+                                                            {userImg ? <img src={userImg} className="w-full h-full object-cover" /> : <User size={14} className="text-gray-400" />}
+                                                        </div>
+                                                        <span className="text-xs font-bold text-gray-600">@{item.user}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <span className="text-[10px] text-gray-400 font-bold uppercase">{item.date}</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- ANALYTICS SIDEBAR --- */}
+                <div className="xl:col-span-1">
+                    <div className="sticky top-6 space-y-6">
+                        <div className="bg-[#3B0A0A] p-6 rounded-[32px] shadow-2xl text-white border border-white/5 relative overflow-hidden">
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-2 mb-1 text-orange-400 uppercase font-black text-[9px] tracking-widest">
+                                    <TrendingUp size={12}/> Analysis
                                 </div>
-                                <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                    <div className="flex items-center gap-2"><TrendingDown size={16} className="text-rose-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Expenses</span></div>
-                                    <span className="text-base font-black text-rose-400">₱{batchStats.expenses.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between items-end border-b border-white/10 pb-2">
-                                    <div className="flex items-center gap-2"><Wallet size={16} className="text-orange-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Profit</span></div>
-                                    <span className="text-lg font-black text-white">₱{batchStats.profit.toLocaleString()}</span>
-                                </div>
+                                <h1 className="text-xl font-black mb-6 tracking-tighter uppercase">{selectedBatch}</h1>
                                 
-                                <div className="grid grid-cols-2 gap-3 pt-2">
-                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                        <Database size={14} className="text-orange-300 mb-1"/>
-                                        <p className="text-[8px] font-black text-gray-500 uppercase">Feeds</p>
-                                        <p className="text-xs font-black">{batchStats.feed.toFixed(1)}kg</p>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-end border-b border-white/5 pb-2">
+                                        <div className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Revenue</span></div>
+                                        <span className="text-base font-black text-emerald-400">₱{batchStats.sales.toLocaleString()}</span>
                                     </div>
-                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                        <Pill size={14} className="text-blue-300 mb-1"/>
-                                        <p className="text-[8px] font-black text-gray-500 uppercase">Vitamins</p>
-                                        <p className="text-xs font-black">{batchStats.vits.toFixed(1)}</p>
+                                    <div className="flex justify-between items-end border-b border-white/5 pb-2">
+                                        <div className="flex items-center gap-2"><TrendingDown size={16} className="text-rose-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Cost</span></div>
+                                        <span className="text-base font-black text-rose-400">₱{batchStats.expenses.toLocaleString()}</span>
                                     </div>
-                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                        <HeartPulse size={14} className="text-red-400 mb-1"/>
-                                        <p className="text-[8px] font-black text-gray-500 uppercase">Mortality</p>
-                                        <p className="text-xs font-black text-red-400">{batchStats.mort}</p>
+                                    <div className="flex justify-between items-end border-b border-white/10 pb-2">
+                                        <div className="flex items-center gap-2"><Wallet size={16} className="text-orange-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Net Profit</span></div>
+                                        <span className="text-lg font-black text-white">₱{batchStats.profit.toLocaleString()}</span>
                                     </div>
-                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                        <CheckCircle size={14} className="text-emerald-400 mb-1"/>
-                                        <p className="text-[8px] font-black text-gray-500 uppercase">Harvest</p>
-                                        <p className="text-xs font-black">{batchStats.harvested}</p>
+                                    
+                                    <div className="grid grid-cols-2 gap-3 pt-2">
+                                        <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
+                                            <Database size={14} className="text-orange-300 mb-1"/>
+                                            <p className="text-[8px] font-black text-gray-500 uppercase">Feeds</p>
+                                            <p className="text-xs font-black">{batchStats.feed.toFixed(1)}kg</p>
+                                        </div>
+                                        <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
+                                            <HeartPulse size={14} className="text-red-400 mb-1"/>
+                                            <p className="text-[8px] font-black text-gray-500 uppercase">Deaths</p>
+                                            <p className="text-xs font-black text-red-400">{batchStats.mort}</p>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="mt-4 bg-orange-500/10 p-4 rounded-3xl border border-orange-500/20 text-center">
-                                    <Users size={20} className="mx-auto text-orange-400 mb-1"/>
-                                    <p className="text-[9px] font-black text-orange-200 uppercase tracking-widest">Starting Pop.</p>
-                                    <p className="text-2xl font-black text-white">{batchStats.startPop}</p>
+                                    <div className="mt-4 bg-orange-500/10 p-4 rounded-3xl border border-orange-500/20 text-center">
+                                        <Users size={20} className="mx-auto text-orange-400 mb-1"/>
+                                        <p className="text-[9px] font-black text-orange-200 uppercase tracking-widest">Total Stocking</p>
+                                        <p className="text-2xl font-black text-white">{batchStats.startPop}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <style>{` .no-scrollbar::-webkit-scrollbar { display: none; } `}</style>
+            
+            <style>{`
+                @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+                .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+                .no-scrollbar::-webkit-scrollbar { display: none; }
+            `}</style>
         </div>
     );
 };

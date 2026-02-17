@@ -3,21 +3,21 @@ import { auth } from '../firebase';
 import { 
   ShoppingBag, Calendar, DollarSign, Tag, 
   FileText, Hash, Edit2, Trash2, PlusCircle, 
-  Check, AlertTriangle, Layers, User, Banknote, Package
+  Check, AlertTriangle, Layers, User, Banknote, Package, Search, X, Filter
 } from 'lucide-react';
 
 // --- SUCCESS MODAL ---
 const SuccessModal = ({ message, onClose }) => {
   if (!message) return null;
   return (
-    <div className="fixed inset-0 bg-[#1a1a1a]/80 backdrop-blur-md flex items-center justify-center z-[110] animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 text-center border border-gray-100">
-        <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-green-50 mb-4 border border-green-100">
-          <Check className="h-8 w-8 text-green-600" />
+    <div className="fixed inset-0 bg-[#1a1a1a]/80 backdrop-blur-md flex items-center justify-center z-[140] animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center border border-gray-100">
+        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-50 mb-4 border border-green-100">
+          <Check className="h-6 w-6 text-green-600" />
         </div>
-        <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight uppercase">Success</h3>
-        <p className="text-sm text-gray-500 mb-6 font-medium">{message}</p>
-        <button onClick={onClose} className="w-full bg-[#3B0A0A] text-white font-bold rounded-xl px-4 py-3 hover:bg-red-900 transition-all shadow-lg active:scale-95">CONTINUE</button>
+        <h3 className="text-lg font-black text-gray-800 mb-1">SUCCESS</h3>
+        <p className="text-xs text-gray-500 mb-6 font-medium">{message}</p>
+        <button onClick={onClose} className="w-full bg-[#3B0A0A] text-white font-bold rounded-xl px-4 py-3 hover:bg-red-900 transition-all active:scale-95">CONTINUE</button>
       </div>
     </div>
   );
@@ -27,17 +27,17 @@ const SuccessModal = ({ message, onClose }) => {
 const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   let title = type === 'create' ? "Save Expense?" : "Delete Record?";
-  let buttonColor = type === 'create' ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"; 
-  let icon = type === 'create' ? <Check className="h-8 w-8 text-green-600" /> : <Trash2 className="h-8 w-8 text-red-600" />;
+  let buttonColor = type === 'create' ? "bg-green-600" : "bg-red-600"; 
+  let icon = type === 'create' ? <Check className="h-6 w-6 text-green-600" /> : <Trash2 className="h-6 w-6 text-red-600" />;
   return (
-    <div className="fixed inset-0 bg-[#1a1a1a]/85 backdrop-blur-md flex items-center justify-center z-[110]">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 border border-gray-100 text-center">
-        <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4 border border-gray-100">{icon}</div>
-        <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight uppercase">{title}</h3>
-        <p className="text-sm text-gray-500 mb-8 px-4">Please verify the details before proceeding.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 bg-gray-100 text-gray-700 font-bold px-4 py-3 rounded-xl hover:bg-gray-200 transition uppercase text-xs">Cancel</button>
-          <button onClick={onConfirm} className={`flex-1 text-white font-bold px-4 py-3 rounded-xl transition shadow-lg uppercase text-xs ${buttonColor}`}>Confirm</button>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs border border-gray-100 text-center">
+        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-50 mb-3 border">{icon}</div>
+        <h3 className="text-lg font-black text-gray-800 mb-1 uppercase">{title}</h3>
+        <p className="text-[11px] text-gray-500 mb-6 leading-relaxed">Please verify the details before proceeding.</p>
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="flex-1 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-xl text-[10px] uppercase">Cancel</button>
+          <button onClick={onConfirm} className={`flex-1 text-white font-bold py-2.5 rounded-xl text-[10px] uppercase shadow-lg ${buttonColor}`}>Confirm</button>
         </div>
       </div>
     </div>
@@ -48,14 +48,14 @@ const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
 const FeedTypeModal = ({ isOpen, onClose, onSelect }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-[#1a1a1a]/85 backdrop-blur-md flex items-center justify-center z-[120]">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center border border-gray-100">
-        <h3 className="text-lg font-black text-gray-900 mb-4 uppercase tracking-tighter">Select Feed Stage</h3>
-        <div className="flex flex-col gap-3">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[160] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs text-center border border-gray-100 animate-fade-in">
+        <h3 className="text-sm font-black text-gray-900 mb-4 uppercase tracking-tighter">Select Feed Stage</h3>
+        <div className="flex flex-col gap-2">
           {['Booster', 'Starter', 'Finisher'].map((type) => (
-            <button key={type} onClick={() => onSelect(type)} className="w-full py-3 rounded-xl font-bold text-white bg-[#3B0A0A] hover:bg-red-900 transition shadow-md uppercase tracking-wider text-xs">{type}</button>
+            <button key={type} onClick={() => onSelect(type)} className="w-full py-3 rounded-xl font-bold text-white bg-[#3B0A0A] hover:bg-red-900 transition text-[10px] uppercase tracking-widest">{type}</button>
           ))}
-          <button onClick={onClose} className="mt-2 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-wide">Cancel</button>
+          <button onClick={onClose} className="mt-2 text-[10px] font-bold text-gray-400 hover:text-gray-700 uppercase tracking-widest">Cancel</button>
         </div>
       </div>
     </div>
@@ -64,18 +64,17 @@ const FeedTypeModal = ({ isOpen, onClose, onSelect }) => {
 
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
-  
-  // --- STATE FOR BOTH LISTS ---
   const [systemUsers, setSystemUsers] = useState([]); 
   const [personnelList, setPersonnelList] = useState([]); 
-  
   const [activeBatchId, setActiveBatchId] = useState(null); 
   const [successMessage, setSuccessMessage] = useState('');
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, targetId: null });
   const [feedModal, setFeedModal] = useState({ isOpen: false, targetId: null });
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editMode, setEditMode] = useState(null);
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   
   const [formData, setFormData] = useState({ 
     category: 'Feeds', itemName: '', amount: '', count: '1', unitValue: '50', suffix: 'kgs', date: new Date().toISOString().split('T')[0] 
@@ -83,17 +82,12 @@ const Expenses = () => {
 
   const backendUrl = "http://localhost:8000";
 
-  // --- FETCH BOTH LISTS ---
   const fetchStaffData = async (token) => {
     try {
-      // 1. Get System Users (Technicians)
       const userRes = await fetch(`${backendUrl}/get-users`, { headers: { "Authorization": `Bearer ${token}` }});
       if (userRes.ok) setSystemUsers(await userRes.json());
-
-      // 2. Get Personnel (Farmers)
       const personnelRes = await fetch(`${backendUrl}/get-personnel`, { headers: { "Authorization": `Bearer ${token}` }});
       if (personnelRes.ok) setPersonnelList(await personnelRes.json());
-
     } catch (err) { console.error(err); }
   };
 
@@ -103,9 +97,7 @@ const Expenses = () => {
       const user = auth.currentUser;
       if (!user) return;
       const token = await user.getIdToken();
-      
-      fetchStaffData(token); // Fetch combined staff list
-
+      fetchStaffData(token);
       const batchRes = await fetch(`${backendUrl}/get-batches`, { headers: { "Authorization": `Bearer ${token}` }});
       if (batchRes.ok) {
         const batches = await batchRes.json();
@@ -128,12 +120,10 @@ const Expenses = () => {
     const newCat = e.target.value;
     let newSuffix = 'kgs';
     let defaultSize = '50';
-    
     if (newCat === 'Vitamins') { newSuffix = 'g'; defaultSize = '100'; }
     else if (newCat === 'Items') { newSuffix = 'pcs'; defaultSize = '1'; }
     else if (newCat === 'Salary') { newSuffix = 'month'; defaultSize = '1'; }
-    
-    setFormData({ ...formData, category: newCat, suffix: newSuffix, unitValue: defaultSize, itemName: newCat === 'Salary' ? '' : formData.itemName });
+    setFormData({ ...formData, category: newCat, suffix: newSuffix, unitValue: defaultSize, itemName: '' });
   };
 
   const handleAction = async () => {
@@ -168,15 +158,15 @@ const Expenses = () => {
           body: JSON.stringify(body)
         });
         if (response.ok) {
-          setSuccessMessage(editMode ? "Updated!" : "Saved!");
+          setSuccessMessage(editMode ? "Record Updated!" : "Expense Logged!");
           setFormData({ category: 'Feeds', itemName: '', amount: '', count: '1', unitValue: '50', suffix: 'kgs', date: new Date().toISOString().split('T')[0] });
-          setEditMode(null); fetchData();
+          setEditMode(null); setIsFormOpen(false); fetchData();
         }
       } else if (type === 'delete') {
         await fetch(`${backendUrl}/delete-expense/${activeBatchId}/${targetId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` }});
         fetchData();
       }
-    } catch (e) { alert("Action failed"); }
+    } catch (e) { console.error(e); }
   };
 
   const startEdit = (item) => {
@@ -187,6 +177,7 @@ const Expenses = () => {
         category: item.category, itemName: item.itemName, amount: item.amount.toString(), 
         count: count.toString(), unitValue: sizePerPack.toString(), suffix: item.unit, date: item.date 
     });
+    setIsFormOpen(true);
   };
 
   const quickSetFeedType = async (feedType) => {
@@ -199,157 +190,204 @@ const Expenses = () => {
         method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ expenseId, batchId: activeBatchId, category: "Feeds", feedType })
       });
-      if (response.ok) { setSuccessMessage(`Set to ${feedType}!`); fetchData(); }
-    } catch (e) { alert("Update failed"); }
+      if (response.ok) { setSuccessMessage(`Classification updated!`); fetchData(); }
+    } catch (e) { console.error(e); }
   };
 
-  const filteredExpenses = filter === 'All' ? expenses : expenses.filter(i => i.category === filter);
+  const filteredExpenses = expenses.filter(i => {
+    const matchesFilter = filter === 'All' || i.category === filter;
+    const matchesSearch = i.itemName.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+
   const totalSpent = filteredExpenses.reduce((sum, i) => sum + ((parseFloat(i.purchaseCount) || 1) * parseFloat(i.amount || 0)), 0);
 
   return (
-    <div className="bg-gray-50 h-[calc(100vh-100px)] w-full overflow-hidden font-sans text-gray-800 p-4">
+    <div className="bg-gray-50 h-full w-full p-6 animate-fade-in font-sans text-gray-800">
       <SuccessModal message={successMessage} onClose={() => setSuccessMessage('')} />
       <ConfirmModal isOpen={confirmModal.isOpen} type={confirmModal.type} onCancel={() => setConfirmModal({...confirmModal, isOpen: false})} onConfirm={handleAction} />
       <FeedTypeModal isOpen={feedModal.isOpen} onClose={() => setFeedModal({isOpen: false, targetId: null})} onSelect={quickSetFeedType} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full overflow-hidden">
-        {/* LEFT COLUMN: FORM */}
-        <div className="lg:col-span-4 h-full overflow-hidden">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-            <div className={`p-5 text-white ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>
+      {/* --- HEADER --- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center gap-4 flex-1">
+          <div className="p-2.5 bg-red-50 rounded-xl"><ShoppingBag size={22} className="text-[#3B0A0A]" /></div>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input 
+              type="text" placeholder="Search item..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-900 outline-none text-xs transition-all font-medium"
+            />
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+            <Filter size={14} className="text-gray-400" />
+            <select className="bg-transparent text-[11px] font-bold outline-none cursor-pointer" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <option value="All">All Categories</option><option value="Feeds">Feeds</option><option value="Vitamins">Vitamins</option><option value="Items">Items</option><option value="Salary">Salary</option>
+            </select>
+          </div>
+          <button 
+            onClick={() => { setEditMode(null); setFormData({ category: 'Feeds', itemName: '', amount: '', count: '1', unitValue: '50', suffix: 'kgs', date: new Date().toISOString().split('T')[0] }); setIsFormOpen(true); }}
+            className="bg-[#3B0A0A] text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-red-900 transition-all flex items-center gap-2 shadow-lg active:scale-95"
+          >
+            <PlusCircle size={16} /> Add Expense
+          </button>
+        </div>
+      </div>
+
+      {/* --- TOTAL SUMMARY BANNER --- */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 mb-6 flex justify-between items-center shadow-sm">
+        <div>
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Active Batch Ledger</span>
+          <h2 className="text-sm font-bold text-gray-500 uppercase">{filter} Expenses</h2>
+        </div>
+        <div className="text-right">
+          <span className="block text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest opacity-50">Total Outflow</span>
+          <span className="text-4xl font-black text-[#3B0A0A]">₱{totalSpent.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* --- TABLE LAYOUT --- */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50 border-b border-gray-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Item / Category</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Quantity</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Unit Price</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Total Amount</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr><td colSpan="5" className="py-20 text-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3B0A0A] mx-auto"></div></td></tr>
+              ) : filteredExpenses.length === 0 ? (
+                <tr><td colSpan="5" className="py-20 text-center text-gray-300 text-xs font-medium uppercase tracking-widest">No expenses logged</td></tr>
+              ) : filteredExpenses.map((item) => {
+                const q = parseFloat(item.purchaseCount) || 1;
+                const p = parseFloat(item.amount) || 0;
+                return (
+                  <tr key={item.id} className="hover:bg-gray-50/40 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-gray-800">{item.itemName}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded text-white uppercase ${item.category === 'Feeds' ? 'bg-amber-600' : item.category === 'Salary' ? 'bg-blue-600' : 'bg-purple-600'}`}>{item.category}</span>
+                            {item.feedType && <span className="text-[8px] font-bold bg-green-500 text-white px-1.5 py-0.5 rounded uppercase">{item.feedType}</span>}
+                            <span className="text-[10px] text-gray-400 font-medium">{item.date}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-gray-700">{q} {item.category === 'Salary' ? 'Month(s)' : 'Pack(s)'}</span>
+                        <span className="text-[10px] text-gray-400">{item.category !== 'Salary' && `${item.quantity}${item.unit}`}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                        <span className="text-xs font-bold text-gray-500">₱{p.toLocaleString()}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                        <span className="text-sm font-black text-[#3B0A0A]">₱{(q * p).toLocaleString()}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        {item.category === 'Feeds' && (
+                          <button onClick={() => setFeedModal({ isOpen: true, targetId: item.id })} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Classify"><Layers size={16} /></button>
+                        )}
+                        <button onClick={() => startEdit(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Edit"><Edit2 size={16} /></button>
+                        <button onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: item.id })} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 size={16} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* --- ADD/EDIT MODAL --- */}
+      {isFormOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[130] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-100 animate-fade-in">
+            <div className={`p-4 flex justify-between items-center text-white ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>
               <div className="flex items-center gap-3">
-                <PlusCircle className="text-white h-6 w-6" />
-                <h2 className="font-bold text-lg uppercase tracking-widest">{editMode ? 'Edit Entry' : 'New Expense'}</h2>
+                <div className="p-1.5 bg-white/10 rounded-lg">{editMode ? <Edit2 size={18}/> : <PlusCircle size={18}/>}</div>
+                <h2 className="font-bold text-sm tracking-tight">{editMode ? "EDIT EXPENSE" : "LOG NEW EXPENSE"}</h2>
               </div>
+              <button onClick={() => setIsFormOpen(false)} className="hover:rotate-90 transition-transform duration-200"><X size={20} /></button>
             </div>
-
-            <form onSubmit={(e) => { e.preventDefault(); setConfirmModal({isOpen: true, type: 'create'}); }} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">Category</label>
-                <select className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl p-3 outline-none font-bold" value={formData.category} onChange={handleCategoryChange}>
-                  <option value="Feeds">Feeds</option><option value="Vitamins">Vitamins</option><option value="Items">Items</option><option value="Salary">Salary</option>
-                </select>
+            
+            <form onSubmit={(e) => { e.preventDefault(); setConfirmModal({isOpen: true, type: 'create'}); }} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Category</label>
+                  <select className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" value={formData.category} onChange={handleCategoryChange}>
+                    <option value="Feeds">Feeds</option><option value="Vitamins">Vitamins</option><option value="Items">Items</option><option value="Salary">Salary</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Date</label>
+                  <input type="date" required value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2 text-xs outline-none" />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">{formData.category === 'Salary' ? 'Personnel' : 'Item Name'}</label>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">{formData.category === 'Salary' ? 'Personnel' : 'Item Name'}</label>
                 {formData.category === 'Salary' ? (
-                  /* --- COMBINED DROPDOWN: USERS + PERSONNEL --- */
-                  <select required className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl p-3 font-bold outline-none" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})}>
+                  <select required className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})}>
                     <option value="">Select Staff...</option>
-                    
-                    {/* OPTION GROUP: TECHNICIANS */}
-                    <optgroup label="System Users (Technicians)">
-                        {systemUsers.filter(u => u.role !== 'admin').map((u) => (
-                            <option key={u.uid} value={u.fullName || u.username}>{u.fullName || u.username} (Tech)</option>
-                        ))}
+                    <optgroup label="Technicians">
+                        {systemUsers.filter(u => u.role !== 'admin').map((u) => <option key={u.uid} value={u.fullName || u.username}>{u.fullName || u.username} (Tech)</option>)}
                     </optgroup>
-
-                    {/* OPTION GROUP: PERSONNEL */}
-                    <optgroup label="Farm Personnel">
-                        {personnelList.filter(p => p.status === 'Active').map((p) => (
-                            <option key={p.id} value={`${p.firstName} ${p.lastName}`}>
-                                {p.firstName} {p.lastName} (Staff)
-                            </option>
-                        ))}
+                    <optgroup label="Farmers">
+                        {personnelList.filter(p => p.status === 'Active').map((p) => <option key={p.id} value={`${p.firstName} ${p.lastName}`}>{p.firstName} {p.lastName} (Staff)</option>)}
                     </optgroup>
                   </select>
                 ) : (
-                  <div className="relative"><FileText className="absolute left-3 top-3 text-gray-400 h-4 w-4" /><input type="text" required placeholder="Ex: Integra 3000" className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl pl-10 p-3 outline-none font-bold" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})} /></div>
+                  <input type="text" required placeholder="Ex: Item Name" value={formData.itemName} onChange={(e) => setFormData({...formData, itemName: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
                 )}
               </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">Quantity</label>
-                    <div className="relative group">
-                      <Package className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
-                      <input type="number" required className="w-full bg-gray-50 border border-gray-200 text-sm rounded-xl pl-10 p-3 outline-none font-black" value={formData.count} onChange={(e) => setFormData({...formData, count: e.target.value})} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">Unit</label>
-                    <div className="flex">
-                        {formData.category !== 'Items' && (
-                          <input type="number" required placeholder="50" className="w-full bg-gray-50 border border-gray-200 text-sm rounded-l-xl p-3 outline-none font-black" value={formData.unitValue} onChange={(e) => setFormData({...formData, unitValue: e.target.value})} />
-                        )}
-                        <select value={formData.suffix} onChange={(e) => setFormData({...formData, suffix: e.target.value})} className={`bg-gray-200 text-gray-700 font-bold px-1 text-[10px] border-y border-r border-gray-200 outline-none w-20 text-center uppercase ${formData.category === 'Items' ? 'rounded-xl border-l h-[46px]' : 'rounded-r-xl'}`}>
-                          {formData.category === 'Feeds' ? (<><option value="kgs">KGS</option><option value="lbs">LBS</option></>) : formData.category === 'Vitamins' ? (<><option value="g">G</option><option value="mg">MG</option><option value="ml">ML</option><option value="l">L</option></>) : (<><option value="pcs">PCS</option><option value="pack">PACK</option><option value="set">SET</option></>)}
-                        </select>
-                    </div>
-                  </div>
-              </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">Price / Pack</label>
-                  <div className="relative"><DollarSign className="absolute left-3 top-3 text-gray-400 h-4 w-4" /><input type="number" required className="w-full bg-gray-50 border border-gray-200 text-[#3B0A0A] text-sm rounded-xl pl-10 p-3 outline-none font-black" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} /></div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Price / Unit</label>
+                  <input type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-[#3B0A0A] uppercase tracking-widest pl-1">Date</label>
-                  <input type="date" required className="w-full bg-gray-50 border border-gray-200 text-xs rounded-xl p-3 font-bold outline-none" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} />
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Packs/Qty</label>
+                  <input type="number" required value={formData.count} onChange={(e) => setFormData({...formData, count: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
                 </div>
               </div>
-              
-              <button type="submit" className={`w-full mt-4 text-white font-black rounded-xl py-4 transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>{editMode ? 'Update' : 'Save'}</button>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Unit Detail (Size)</label>
+                <div className="flex">
+                  <input type="number" required disabled={formData.category === 'Items'} value={formData.unitValue} onChange={(e) => setFormData({...formData, unitValue: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-l-xl p-2.5 text-xs outline-none font-bold disabled:bg-gray-200" />
+                  <select value={formData.suffix} onChange={(e) => setFormData({...formData, suffix: e.target.value})} className="bg-gray-100 text-gray-600 font-bold px-3 text-[10px] rounded-r-xl border-y border-r border-gray-100 outline-none uppercase">
+                     {formData.category === 'Feeds' ? (<><option value="kgs">kgs</option><option value="lbs">lbs</option></>) : formData.category === 'Vitamins' ? (<><option value="g">g</option><option value="ml">ml</option></>) : (<option value="pcs">pcs</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setIsFormOpen(false)} className="flex-1 bg-gray-50 text-gray-500 font-bold py-3 rounded-xl text-[10px] uppercase hover:bg-gray-100">Cancel</button>
+                <button type="submit" className={`flex-1 text-white font-bold py-3 rounded-xl text-[10px] uppercase shadow-lg active:scale-95 ${editMode ? 'bg-blue-600' : 'bg-[#3B0A0A]'}`}>{editMode ? "Update" : "Confirm"}</button>
+              </div>
             </form>
           </div>
         </div>
+      )}
 
-        {/* RIGHT COLUMN: SCROLLABLE LEDGER */}
-        <div className="lg:col-span-8 h-full flex flex-col overflow-hidden">
-          <div className="flex justify-between items-end border-b border-gray-200 mb-4 pb-4 px-1 shrink-0">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-[#3B0A0A] mb-3"><ShoppingBag className="h-5 w-5" /> Batch Ledger</h2>
-              <div className="flex gap-2">
-                {['All', 'Feeds', 'Vitamins', 'Items', 'Salary'].map(cat => (<button key={cat} onClick={() => setFilter(cat)} className={`text-[10px] font-black px-4 py-2 rounded-xl transition-all border ${filter === cat ? 'bg-[#3B0A0A] text-white border-[#3B0A0A]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#3B0A0A]'}`}>{cat}</button>))}
-              </div>
-            </div>
-            <div className="text-right">
-              <span className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Spent</span>
-              <span className="text-3xl font-black text-[#3B0A0A]">₱{totalSpent.toLocaleString()}</span>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-4 pb-32 custom-scrollbar pr-2">
-            {filteredExpenses.map((item) => {
-              const q = parseFloat(item.purchaseCount) || 1;
-              const p = parseFloat(item.amount) || 0;
-              const rowTotal = q * p;
-              return (
-              <div key={item.id} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-center overflow-hidden">
-                <div className="p-5 flex-1 w-full">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded-lg text-gray-500 uppercase tracking-tighter">{item.date}</span>
-                    <span className={`text-[9px] font-black text-white px-2 py-1 rounded-md uppercase tracking-widest ${item.category === 'Feeds' ? 'bg-amber-600' : item.category === 'Salary' ? 'bg-blue-600' : 'bg-purple-600'}`}>{item.category}</span>
-                    {item.feedType && <span className="text-[9px] font-bold bg-green-600 text-white px-2 py-1 rounded-md uppercase tracking-widest ml-2">{item.feedType}</span>}
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="font-black text-gray-800 text-lg uppercase tracking-tight leading-none mb-1">{item.itemName}</h3>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase">
-                        {q} {item.category === 'Salary' ? 'Month(s)' : 'Pack(s)'} {item.category !== 'Salary' && `• ${item.quantity}${item.unit} total stock`}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-black text-[#3B0A0A]">₱{rowTotal.toLocaleString()}</p>
-                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">₱{p.toLocaleString()} / Unit</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 border-l border-gray-100 flex md:flex-col gap-2 shrink-0">
-                  {item.category === 'Feeds' && (
-                    <button onClick={() => setFeedModal({ isOpen: true, targetId: item.id })} className="w-24 flex items-center justify-center gap-1 text-[10px] font-black text-green-700 bg-green-100 py-2 rounded-lg uppercase border border-green-200">Type</button>
-                  )}
-                  <button onClick={() => startEdit(item)} className="w-24 flex items-center justify-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 py-2 rounded-lg uppercase hover:bg-blue-100 transition-colors"><Edit2 size={12} /> Edit</button>
-                  <button onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: item.id })} className="w-24 flex items-center justify-center gap-1 text-[10px] font-black text-red-600 bg-red-50 py-2 rounded-lg uppercase hover:bg-red-100 transition-colors"><Trash2 size={12} /> Delete</button>
-                </div>
-              </div>
-            )})}
-          </div>
-        </div>
-      </div>
+      <style>{`
+        @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+      `}</style>
     </div>
   );
 };

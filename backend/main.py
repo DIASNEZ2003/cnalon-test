@@ -49,9 +49,13 @@ class BatchSchema(BaseModel):
     startingPopulation: int
     vitaminBudget: Optional[float] = 0.0
     penCount: Optional[int] = 5
-    averageChickWeight: Optional[float] = 40.0 
+    averageChickWeight: Optional[float] = 50.0
+    status: Optional[str] = None # Auto-assigned by backend
 
 class BatchUpdateSchema(BaseModel):
+    batchName: Optional[str] = None
+    dateCreated: Optional[str] = None
+    expectedCompleteDate: Optional[str] = None
     status: Optional[str] = None
     startingPopulation: Optional[int] = None
     penCount: Optional[int] = None
@@ -166,27 +170,16 @@ class EditPersonnelSchema(BaseModel):
 # 4. KNOWLEDGE BASE (FEED & WEIGHT LOGIC)
 # ---------------------------------------------------------
 
-# FEED LOGIC: Grams per Bird per Day (Sheet 1 Yellow)
 FEED_LOGIC_TEMPLATE = [
-    (range(1, 2), 35.0, "Booster"),      # Day 1: 30g/bird
-    (range(2, 4), 35.0, "Booster"),      # Day 2-3: 35g/bird
-    (range(4, 7), 45.0, "Booster"),      # Day 4-6: 45g/bird
-    (range(7, 11), 55.0, "Booster"),     # Day 7-10: 55g/bird
-    (range(11, 15), 85.0, "Starter"),    # Day 11-14: 85g/bird
-    (range(15, 21), 115.0, "Starter"),   # Day 15-20: 115g/bird
-    (range(21, 26), 145.0, "Finisher"),  # Day 21-25: 145g/bird
-    (range(26, 31), 170.0, "Finisher"),  # Day 26-30: 170g/bird
+    (range(1, 2), 35.0, "Booster"),
+    (range(2, 4), 35.0, "Booster"),
+    (range(4, 7), 45.0, "Booster"),
+    (range(7, 11), 55.0, "Booster"),
+    (range(11, 15), 85.0, "Starter"),
+    (range(15, 21), 115.0, "Starter"),
+    (range(21, 26), 145.0, "Finisher"),
+    (range(26, 31), 170.0, "Finisher"),
 ]
-
-# STANDARD BROILER GROWTH (TARGET WEIGHTS in Grams)
-STANDARD_WEIGHTS = {
-    0: 42,    # Day 0 (Chicks)
-    7: 189,   # Day 7
-    14: 480,  # Day 14
-    21: 969,  # Day 21
-    28: 1623, # Day 28
-    35: 2333  # Day 35
-}
 
 MEDICATION_DB = {
     "vetracin": {"adult_dose": 100.0, "unit": "g"}, 
@@ -205,11 +198,13 @@ MEDICATION_DB = {
 # 5. CALCULATION ENGINES
 # ---------------------------------------------------------
 
+def get_estimated_fcr(day: int) -> float:
+    if day <= 5: return 1.3
+    if day <= 12: return 1.4
+    if day <= 21: return 1.5
+    return 1.7
+
 def generate_forecast_data(population: int):
-    """
-    Calculates forecast based on population using Sheet 1 formula.
-    Formula: (Grams_per_bird * Population) / 1000 = Total KG
-    """
     forecast_data = []
     print(f"--- Recalculating Feed for Pop: {population} ---")
     for day in range(1, 31):
@@ -218,35 +213,76 @@ def generate_forecast_data(population: int):
             grams_per_bird = f_match[1]
             target_kilos = (grams_per_bird * population) / 1000.0
             
-            # Debug print for Day 1 to confirm logic
-            if day == 1:
-                print(f"Day 1: ({grams_per_bird}g * {population}) / 1000 = {target_kilos} kg")
-
             forecast_data.append({
                 "day": day,
                 "feedType": f_match[2],
-                "targetKilos": round(target_kilos, 2)
+                "targetKilos": round(target_kilos, 2),
+                "gramsPerBird": grams_per_bird 
             })
     return forecast_data
 
-def generate_weight_forecast(start_weight: float):
-    """
-    Generates target weights for Days 7, 14, 21, 28.
-    Scales the standard curve based on the actual starting chick weight vs standard (42g).
-    """
-    ratio = start_weight / 42.0 
+def generate_weight_forecast(start_weight: float, population: int, feed_forecast: list):
     weight_data = []
-    target_days = [7, 14, 21, 28]
+    current_weight_g = start_weight
+    target_days = [1] + list(range(3, 31, 3))
     
-    for d in target_days:
-        std_w = STANDARD_WEIGHTS.get(d, 0)
-        projected = std_w * ratio
-        weight_data.append({
-            "day": f"Day {d}",
-            "weight": int(projected),
-            "unit": "g"
-        })
+    for day in range(1, 31):
+        day_feed_data = next((f for f in feed_forecast if f["day"] == day), None)
+        if day_feed_data:
+            daily_feed_g = day_feed_data["gramsPerBird"]
+            fcr = get_estimated_fcr(day)
+            daily_gain_g = daily_feed_g / fcr
+            current_weight_g += daily_gain_g
+            if day in target_days:
+                total_flock_weight_kg = (current_weight_g * population) / 1000.0
+                weight_data.append({
+                    "day": f"Day {day}",
+                    "weight": round(total_flock_weight_kg, 2),
+                    "avgWeight": int(current_weight_g),
+                    "fcr": fcr,
+                    "unit": "kg"
+                })
     return weight_data
+
+# --- HELPER 1: DEACTIVATE OTHERS ---
+def deactivate_other_active_batches(current_batch_id=None):
+    """If we make a batch active, turn off all others."""
+    try:
+        ref = db.reference('global_batches')
+        snapshot = ref.get()
+        if snapshot:
+            for bid, bdata in snapshot.items():
+                if bdata.get('status') == 'active' and bid != current_batch_id:
+                    ref.child(bid).update({"status": "inactive"})
+                    print(f"Deactivated batch: {bid}")
+    except Exception as e:
+        print(f"Error deactivating batches: {e}")
+
+# --- HELPER 2: AUTO-ACTIVATE NEXT INACTIVE BATCH ---
+def activate_next_inactive_batch():
+    """Finds the oldest 'inactive' batch and turns it 'active'."""
+    try:
+        ref = db.reference('global_batches')
+        snapshot = ref.get()
+        if snapshot:
+            # Filter for inactive batches
+            inactive_batches = [
+                (bid, bdata) for bid, bdata in snapshot.items()
+                if bdata.get('status') == 'inactive'
+            ]
+            
+            # Sort by dateCreated (oldest first)
+            inactive_batches.sort(key=lambda x: x[1].get('dateCreated', '9999-99-99'))
+            
+            if inactive_batches:
+                next_id = inactive_batches[0][0]
+                next_name = inactive_batches[0][1].get('batchName')
+                ref.child(next_id).update({"status": "active"})
+                print(f"Auto-Activated next batch: {next_name}")
+                return True
+    except Exception as e:
+        print(f"Error auto-activating next batch: {e}")
+    return False
 
 # ---------------------------------------------------------
 # 6. API ENDPOINTS
@@ -331,6 +367,7 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# --- UPDATED: CREATE BATCH (New Logic) ---
 @app.post("/create-batch")
 async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -338,6 +375,22 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     token = authorization.split("Bearer ")[1]
     try:
         auth.verify_id_token(token)
+        
+        # 1. CHECK IF THERE IS ALREADY AN ACTIVE BATCH
+        ref_all = db.reference('global_batches')
+        snapshot = ref_all.get()
+        has_active_batch = False
+        if snapshot:
+            for _, val in snapshot.items():
+                if val.get('status') == 'active':
+                    has_active_batch = True
+                    break
+        
+        # 2. AUTO ASSIGN STATUS
+        # If active batch exists -> New batch = INACTIVE (Wait in queue)
+        # If no active batch -> New batch = ACTIVE (Start immediately)
+        final_status = "inactive" if has_active_batch else "active"
+
         ref_batch = db.reference('global_batches')
         new_batch_ref = ref_batch.push()
         
@@ -351,10 +404,10 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
             "vitaminBudget": data.vitaminBudget,
             "penCount": data.penCount,
             "averageChickWeight": data.averageChickWeight,
-            "status": "active",
+            "status": final_status, # AUTO ASSIGNED
             "feedForecast": forecast_list
         })
-        return {"status": "success", "message": "Batch created"}
+        return {"status": "success", "message": f"Batch created as {final_status}"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -375,6 +428,7 @@ async def get_batches(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
+# --- UPDATED: UPDATE BATCH (Activation Logic) ---
 @app.put("/update-batch/{batch_id}")
 async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -382,18 +436,36 @@ async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: st
     token = authorization.split("Bearer ")[1]
     try:
         auth.verify_id_token(token)
+        
+        # 1. If manually setting to 'active', pause others
+        if data.status == "active":
+            deactivate_other_active_batches(current_batch_id=batch_id)
+
         ref_batch = db.reference(f'global_batches/{batch_id}')
         
         updates = {}
-        if data.status is not None:
-            updates["status"] = data.status
+        if data.batchName is not None: updates["batchName"] = data.batchName
+        if data.dateCreated is not None: updates["dateCreated"] = data.dateCreated
+        if data.expectedCompleteDate is not None: updates["expectedCompleteDate"] = data.expectedCompleteDate
+        if data.status is not None: updates["status"] = data.status
+        if data.penCount is not None: updates["penCount"] = data.penCount
+        if data.averageChickWeight is not None: updates["averageChickWeight"] = data.averageChickWeight
+
+        if data.startingPopulation is not None:
+            updates["startingPopulation"] = data.startingPopulation
+            new_forecast = generate_forecast_data(data.startingPopulation)
+            updates["feedForecast"] = new_forecast
         
         ref_batch.update(updates)
+
+        # 2. AUTO-ACTIVATE NEXT BATCH if this one is COMPLETED
+        if data.status == "completed":
+            activate_next_inactive_batch()
+
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-# --- NEW: UPDATE BATCH SETTINGS ENDPOINT ---
 @app.put("/update-batch-settings/{batch_id}")
 async def update_batch_settings(batch_id: str, data: BatchUpdateSchema, authorization: str = Header(None)):
     try:
@@ -607,14 +679,15 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
         
         # 1. GET ACTUAL POPULATION FROM DB
         population = batch_data.get('startingPopulation', 1000)
-        start_weight = batch_data.get('averageChickWeight', 40.0) # Default 40g if not set
+        # UPDATED DEFAULT to 50.0
+        start_weight = batch_data.get('averageChickWeight', 50.0) 
         
         # 2. FORCE RECALCULATE (Ignore old saved data)
         # Using 30.0 g/bird for day 1 -> (30 * 1000) / 1000 = 30.0 kg
         new_feed_forecast = generate_forecast_data(population)
         
-        # 3. Calculate Weight Forecast
-        new_weight_forecast = generate_weight_forecast(start_weight)
+        # 3. Calculate Weight Forecast - BASED DIRECTLY ON FEED CONSUMPTION + 3 DAY GAP
+        new_weight_forecast = generate_weight_forecast(start_weight, population, new_feed_forecast)
         
         # 4. OVERWRITE DATABASE WITH CORRECT DATA
         batch_ref.child('feedForecast').set(new_feed_forecast)

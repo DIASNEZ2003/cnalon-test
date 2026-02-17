@@ -4,7 +4,7 @@ import { getDatabase, ref, onValue, update } from "firebase/database";
 import { 
   UserPlus, Users, MessageSquare, Trash2, Lock, 
   Check, AlertTriangle, Send, X, Edit2, ShieldCheck,
-  CheckCheck
+  Search
 } from 'lucide-react';
 
 // --- HELPER: TIME FORMAT ---
@@ -21,14 +21,14 @@ const PasswordInput = ({ label, value, onChange, placeholder }) => {
     <div className="space-y-1">
       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider pl-1">{label}</label>
       <div className="relative">
-        <Lock className="absolute left-3 top-3 text-gray-400 h-4 w-4" />
+        <Lock className="absolute left-3 top-2.5 text-gray-400 h-4 w-4" />
         <input 
           type={show ? "text" : "password"} 
           required minLength={6}
-          className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-10 p-3 outline-none font-bold"
+          className="w-full bg-gray-50 border border-gray-100 text-gray-900 text-xs rounded-xl focus:ring-2 focus:ring-[#3B0A0A] focus:border-[#3B0A0A] block pl-9 p-2.5 outline-none font-bold transition-all"
           value={value} onChange={onChange} placeholder={placeholder}
         />
-        <button type="button" onClick={() => setShow(!show)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-[#3B0A0A] text-xs font-bold uppercase">
+        <button type="button" onClick={() => setShow(!show)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-[#3B0A0A] text-[10px] font-bold uppercase">
           {show ? "Hide" : "Show"}
         </button>
       </div>
@@ -40,14 +40,14 @@ const PasswordInput = ({ label, value, onChange, placeholder }) => {
 const SuccessModal = ({ message, onClose }) => {
   if (!message) return null;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 text-center transform transition-all scale-100 border border-gray-100">
-        <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-green-50 mb-4 border border-green-100">
-          <Check className="h-8 w-8 text-green-600" />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[140] animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center border border-gray-100">
+        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-50 mb-4 border border-green-100">
+          <Check className="h-6 w-6 text-green-600" />
         </div>
-        <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight">Success</h3>
-        <p className="text-sm text-gray-500 mb-6 font-medium">{message}</p>
-        <button onClick={onClose} className="w-full bg-[#3B0A0A] text-white font-bold rounded-xl px-4 py-3 hover:bg-red-900 transition-all shadow-lg active:scale-95">CONTINUE</button>
+        <h3 className="text-lg font-black text-gray-800 mb-1">Success</h3>
+        <p className="text-xs text-gray-500 mb-6 font-medium">{message}</p>
+        <button onClick={onClose} className="w-full bg-[#3B0A0A] text-white text-xs font-bold rounded-xl px-4 py-3 hover:bg-red-900 transition-all active:scale-95">CONTINUE</button>
       </div>
     </div>
   );
@@ -57,36 +57,46 @@ const SuccessModal = ({ message, onClose }) => {
 const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   
-  let title = "Confirm Action";
-  let message = "Proceed with this action?";
-  let buttonColor = "bg-red-600 hover:bg-red-700";
-  let icon = <AlertTriangle className="h-8 w-8 text-orange-500" />;
-  let buttonText = "Confirm";
+  let config = {
+    title: "Confirm Action",
+    message: "Proceed with this action?",
+    btnColor: "bg-red-600",
+    icon: <AlertTriangle className="h-6 w-6 text-orange-500" />,
+    iconBg: "bg-orange-50",
+    btnText: "Confirm"
+  };
 
   if (type === 'create') {
-    title = "Register User";
-    message = "Are you sure you want to create this new user account?";
-    buttonColor = "bg-green-600 hover:bg-green-700";
-    icon = <UserPlus className="h-8 w-8 text-green-600" />;
-    buttonText = "Create Account";
+    config = {
+      title: "Register User",
+      message: "Are you sure you want to create this new user account?",
+      btnColor: "bg-green-600",
+      icon: <UserPlus className="h-6 w-6 text-green-600" />,
+      iconBg: "bg-green-50",
+      btnText: "Create Account"
+    };
   } else if (type === 'delete') {
-    title = "Delete User?";
-    message = "Permanently remove this user? This cannot be undone.";
-    icon = <Trash2 className="h-8 w-8 text-red-600" />;
-    buttonText = "Yes, Delete";
+    config = {
+      title: "Delete User?",
+      message: "Permanently remove this user? This cannot be undone.",
+      btnColor: "bg-red-600",
+      icon: <Trash2 className="h-6 w-6 text-red-600" />,
+      iconBg: "bg-red-50",
+      btnText: "Yes, Delete"
+    };
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110]">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 border border-gray-100">
-        <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-50 mb-4 border border-gray-100">
-          {icon}
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs border border-gray-100 text-center">
+        <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full ${config.iconBg} mb-3 border`}>
+          {config.icon}
         </div>
-        <h3 className="text-xl font-black text-gray-800 text-center mb-2 tracking-tight">{title}</h3>
-        <p className="text-sm text-gray-500 text-center mb-8 px-4">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 bg-gray-100 text-gray-700 font-bold px-4 py-3 rounded-xl hover:bg-gray-200 transition">Cancel</button>
-          <button onClick={onConfirm} className={`flex-1 text-white font-bold px-4 py-3 rounded-xl transition shadow-lg ${buttonColor}`}>{buttonText}</button>
+        <h3 className="text-lg font-black text-gray-800 mb-1">{config.title}</h3>
+        <p className="text-[11px] text-gray-500 mb-6 leading-relaxed px-2">{config.message}</p>
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="flex-1 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-xl text-[10px] uppercase">Cancel</button>
+          <button onClick={onConfirm} className={`flex-1 text-white font-bold py-2.5 rounded-xl text-[10px] uppercase shadow-lg ${config.btnColor}`}>{config.btnText}</button>
         </div>
       </div>
     </div>
@@ -107,13 +117,11 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
     if (!isOpen || !targetUser) return;
     const db = getDatabase();
     
-    // 1. WATCH TARGET USER LIVE STATUS
     const statusRef = ref(db, `users/${targetUser.uid}/status`);
     const unsubStatus = onValue(statusRef, (snap) => {
         setLiveStatus(snap.val() || "offline");
     });
 
-    // 2. WATCH CHAT MESSAGES
     const chatRef = ref(db, `chats/${targetUser.uid}`);
     const unsubscribeChat = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
@@ -123,7 +131,6 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
 
         const updates = {};
         Object.keys(data).forEach(id => {
-            // ADMIN SIDE SEEN LOGIC: When Admin opens modal, user messages become seen
             if (data[id].sender === 'user' && data[id].seen !== true) {
                 updates[`chats/${targetUser.uid}/${id}/seen`] = true;
                 updates[`chats/${targetUser.uid}/${id}/status`] = 'seen';
@@ -147,9 +154,6 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
     try {
       const user = auth.currentUser;
       const token = await user.getIdToken();
-      
-      // ADMIN TO USER: Start as "sent". 
-      // User app handles flipping it to "delivered" when they are active.
       await fetch("http://localhost:8000/admin-send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -185,32 +189,32 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
     } catch (error) { console.error(error); }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !targetUser) return null; // Added safety check for targetUser
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-      <div className="bg-white w-full max-w-md h-[500px] max-h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative border border-gray-100">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[140] p-4">
+      <div className="bg-white w-full max-w-md h-[500px] max-h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative border border-gray-100 animate-fade-in">
         
         {msgToDelete && (
-          <div className="absolute inset-0 z-[120] bg-white/90 backdrop-blur flex items-center justify-center p-4">
-            <div className="text-center">
-              <h4 className="text-lg font-bold text-gray-800 mb-4">Delete Message?</h4>
+          <div className="absolute inset-0 z-[160] bg-white/95 backdrop-blur flex items-center justify-center p-6">
+            <div className="text-center w-full">
+              <h4 className="text-sm font-bold text-gray-800 mb-4">Delete this message?</h4>
               <div className="flex gap-2 justify-center">
-                <button onClick={() => setMsgToDelete(null)} className="px-6 py-2 bg-gray-200 font-bold rounded-xl text-gray-600">Cancel</button>
-                <button onClick={deleteMessage} className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl">Delete</button>
+                <button onClick={() => setMsgToDelete(null)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl text-xs text-gray-600 uppercase">Cancel</button>
+                <button onClick={deleteMessage} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl text-xs uppercase shadow-lg">Delete</button>
               </div>
             </div>
           </div>
         )}
 
         {msgToEdit && (
-          <div className="absolute inset-0 z-[120] bg-white/90 backdrop-blur flex items-center justify-center p-4">
-            <div className="w-full bg-white border border-gray-200 p-6 rounded-2xl shadow-xl">
-              <h4 className="font-bold text-gray-800 mb-3">Edit Message</h4>
-              <textarea className="w-full border bg-gray-50 p-3 rounded-xl text-sm h-24 outline-none focus:border-blue-500" value={editText} onChange={(e) => setEditText(e.target.value)} />
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => setMsgToEdit(null)} className="flex-1 py-2 bg-gray-200 font-bold rounded-xl text-gray-600">Cancel</button>
-                <button onClick={submitEdit} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-xl">Save</button>
+          <div className="absolute inset-0 z-[160] bg-white/95 backdrop-blur flex items-center justify-center p-6">
+            <div className="w-full">
+              <h4 className="font-bold text-gray-800 mb-2 text-sm uppercase">Edit Message</h4>
+              <textarea className="w-full border bg-gray-50 p-3 rounded-xl text-sm h-24 outline-none focus:border-red-900 focus:ring-1 focus:ring-red-900" value={editText} onChange={(e) => setEditText(e.target.value)} />
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => setMsgToEdit(null)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl text-xs text-gray-600 uppercase">Cancel</button>
+                <button onClick={submitEdit} className="flex-1 py-3 bg-[#3B0A0A] text-white font-bold rounded-xl text-xs uppercase shadow-lg">Save</button>
               </div>
             </div>
           </div>
@@ -222,13 +226,13 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
               {targetUser.profilePicture ? (
                 <img src={targetUser.profilePicture} className="w-full h-full object-cover" alt="" />
               ) : (
-                targetUser.username?.charAt(0).toUpperCase()
+                (targetUser.username || "U").charAt(0).toUpperCase()
               )}
               <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-[#3B0A0A] rounded-full ${liveStatus === 'online' ? 'bg-green-400' : 'bg-gray-400'}`}></div>
             </div>
             <div>
-              <h3 className="font-bold text-white leading-tight flex items-center gap-1">
-                {targetUser.username}
+              <h3 className="font-bold text-white leading-tight flex items-center gap-1 text-sm">
+                {targetUser.username || "Unknown User"}
                 {targetUser.role === 'admin' && <ShieldCheck size={14} className="text-blue-400" />}
               </h3>
               <p className="text-[10px] text-white/60 uppercase font-bold tracking-wider italic">
@@ -247,12 +251,12 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
             return (
               <div key={m.id} className={`flex group w-full ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                 <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} max-w-[85%]`}>
-                  <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm relative ${isAdmin ? 'bg-[#3B0A0A] text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}`}>
+                  <div className={`px-4 py-2.5 rounded-2xl text-xs font-medium shadow-sm relative ${isAdmin ? 'bg-[#3B0A0A] text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}`}>
                     {m.text}
                     {isAdmin && (
                       <div className="absolute top-0 -left-12 hidden group-hover:flex gap-1 h-full items-center">
-                        <button onClick={() => { setMsgToEdit(m); setEditText(m.text); }} className="p-1.5 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200"><Edit2 size={12} /></button>
-                        <button onClick={() => setMsgToDelete(m.id)} className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200"><Trash2 size={12} /></button>
+                        <button onClick={() => { setMsgToEdit(m); setEditText(m.text); }} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Edit2 size={12} /></button>
+                        <button onClick={() => setMsgToDelete(m.id)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"><Trash2 size={12} /></button>
                       </div>
                     )}
                   </div>
@@ -284,10 +288,10 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
             value={input} 
             onChange={e => setInput(e.target.value)} 
             placeholder="Type a message..." 
-            className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 font-medium" 
+            className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-2 focus:ring-[#3B0A0A] font-bold" 
           />
-          <button type="submit" className="bg-[#3B0A0A] text-white p-3 rounded-xl hover:bg-red-900 transition shadow-lg shadow-red-900/20">
-            <Send size={18} />
+          <button type="submit" className="bg-[#3B0A0A] text-white p-3 rounded-xl hover:bg-red-900 transition shadow-lg active:scale-95">
+            <Send size={16} />
           </button>
         </form>
       </div>
@@ -295,8 +299,8 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
   );
 };
 
-// --- MAIN PAGE COMPONENT ---
-const UserManagement = () => {
+// --- MAIN USER COMPONENT (RENAMED TO USER) ---
+const User = () => {
   const [users, setUsers] = useState([]);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
@@ -304,6 +308,8 @@ const UserManagement = () => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, targetId: null });
   const [formData, setFormData] = useState({ firstName: '', lastName: '', username: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const backendUrl = "http://localhost:8000";
 
@@ -329,8 +335,11 @@ const UserManagement = () => {
         if (data) {
             Object.keys(data).forEach(uid => {
                 const userMessages = data[uid];
-                const count = Object.values(userMessages).filter(m => m.sender === 'user' && !m.seen).length;
-                counts[uid] = count;
+                // Safety check for userMessages
+                if (userMessages) {
+                    const count = Object.values(userMessages).filter(m => m.sender === 'user' && !m.seen).length;
+                    counts[uid] = count;
+                }
             });
         }
         setUnreadCounts(counts);
@@ -362,84 +371,198 @@ const UserManagement = () => {
       });
 
       if (response.ok) {
-        setSuccessMessage(type === 'create' ? "Account Created!" : "User Deleted!");
-        if (type === 'create') setFormData({ firstName: '', lastName: '', username: '', password: '', confirmPassword: '' });
+        setSuccessMessage(type === 'create' ? "Account Created Successfully!" : "User Account Deleted!");
+        if (type === 'create') {
+            setFormData({ firstName: '', lastName: '', username: '', password: '', confirmPassword: '' });
+            setIsAddModalOpen(false);
+        }
       }
     } catch (e) { console.error(e); }
   };
 
-  const regularUsers = users.filter(u => u.role !== 'admin');
+  // Filter out admin and apply search with SAFETY CHECKS
+  const filteredUsers = users.filter(u => {
+    const isRegular = u.role !== 'admin';
+    const username = u.username || ""; // Safe fallback
+    const firstName = u.firstName || "";
+    const lastName = u.lastName || "";
+    const fullName = firstName + " " + lastName;
+    
+    const matchesSearch = username.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          fullName.toLowerCase().includes(searchTerm.toLowerCase());
+    return isRegular && matchesSearch;
+  });
 
   return (
-    <div className="bg-gray-50 h-[calc(100vh-6rem)] w-full overflow-hidden p-4">
+    <div className="bg-gray-50 h-full w-full p-6 animate-fade-in font-sans text-gray-800">
       <SuccessModal message={successMessage} onClose={() => setSuccessMessage('')} />
       <MessengerModal isOpen={!!chatUser} onClose={() => setChatUser(null)} targetUser={chatUser} />
       <ConfirmModal isOpen={confirmModal.isOpen} type={confirmModal.type} onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })} onConfirm={performAction} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
-        <div className="lg:col-span-1 h-full overflow-y-auto pr-1 no-scrollbar">
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-            <div className="bg-[#3B0A0A] p-5 flex items-center gap-3">
-              <UserPlus className="text-white h-6 w-6" />
-              <h2 className="text-white font-bold text-lg tracking-wide">Add New Technician</h2>
-            </div>
-            <form onSubmit={requestCreate} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <input type="text" required placeholder="First Name" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.firstName} onChange={(e)=>setFormData({...formData, firstName:e.target.value})} />
-                <input type="text" required placeholder="Last Name" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.lastName} onChange={(e)=>setFormData({...formData, lastName:e.target.value})} />
+      {/* --- HEADER & ACTION BAR --- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center gap-4 flex-1">
+          <div className="p-2.5 bg-red-50 rounded-xl">
+            <Users size={22} className="text-[#3B0A0A]" />
+          </div>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Search technicians..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-900 outline-none text-xs transition-all font-medium"
+            />
+          </div>
+        </div>
+        
+        <button 
+            onClick={() => setIsAddModalOpen(true)} 
+            className="bg-[#3B0A0A] text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-red-900 transition-all flex items-center gap-2 shadow-lg shadow-red-900/20 active:scale-95"
+        >
+            <UserPlus size={16} /> Add Technician
+        </button>
+      </div>
+
+      {/* --- TABLE LAYOUT --- */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50 border-b border-gray-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Technician Identity</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Messages</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr><td colSpan="4" className="py-20 text-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#3B0A0A] mx-auto"></div></td></tr>
+              ) : filteredUsers.length === 0 ? (
+                <tr><td colSpan="4" className="py-20 text-center text-gray-300 text-xs font-medium uppercase tracking-widest">No technicians found</td></tr>
+              ) : filteredUsers.map((u) => {
+                const unread = unreadCounts[u.uid] || 0;
+                return (
+                  <tr key={u.uid} className="hover:bg-gray-50/40 transition-colors group">
+                    {/* Identity Column */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 border border-gray-200 overflow-hidden">
+                            {u.profilePicture ? (
+                                <img src={u.profilePicture} className="w-full h-full object-cover" alt="" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-400 font-black text-xs">
+                                    {(u.username || "U").charAt(0).toUpperCase()}
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-black text-gray-800">{u.username || "Unknown"}</span>
+                          <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">{u.firstName} {u.lastName}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Status Column */}
+                    <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${
+                            u.status === 'online' 
+                            ? 'bg-green-50 text-green-700 border-green-100' 
+                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                        }`}>
+                            {u.status === 'online' ? 'Online Now' : 'Offline'}
+                        </span>
+                    </td>
+
+                    {/* Messages Column */}
+                    <td className="px-6 py-4">
+                        {unread > 0 ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-100 text-[10px] font-bold animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
+                                {unread} New Message{unread > 1 ? 's' : ''}
+                            </span>
+                        ) : (
+                            <span className="text-[10px] text-gray-400 font-medium">All caught up</span>
+                        )}
+                    </td>
+
+                    {/* Actions Column */}
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button 
+                            onClick={() => setChatUser(u)} 
+                            className={`p-2 rounded-lg transition-colors ${unread > 0 ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : 'text-gray-400 hover:bg-gray-100 hover:text-blue-600'}`}
+                            title="Open Chat"
+                        >
+                            <MessageSquare size={16} />
+                        </button>
+                        <button 
+                            onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: u.uid })} 
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                            title="Delete User"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* --- ADD USER MODAL --- */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[130] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-100 animate-fade-in">
+            <div className="bg-[#3B0A0A] p-4 flex justify-between items-center text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-white/10 rounded-lg"><UserPlus size={18}/></div>
+                <h2 className="font-bold text-sm tracking-tight">Register New Technician</h2>
               </div>
-              <input type="text" required placeholder="Username" className="w-full bg-gray-50 border p-3 rounded-xl outline-none font-bold text-sm" value={formData.username} onChange={(e)=>setFormData({...formData, username:e.target.value})} />
+              <button onClick={() => setIsAddModalOpen(false)} className="hover:rotate-90 transition-transform duration-200"><X size={20} /></button>
+            </div>
+            
+            <form onSubmit={requestCreate} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">First Name</label>
+                    <input type="text" required value={formData.firstName} onChange={(e)=>setFormData({...formData, firstName:e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Last Name</label>
+                    <input type="text" required value={formData.lastName} onChange={(e)=>setFormData({...formData, lastName:e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1 ml-1">Username</label>
+                <input type="text" required value={formData.username} onChange={(e)=>setFormData({...formData, username:e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-red-900 font-bold" />
+              </div>
+
               <PasswordInput label="Create Password" value={formData.password} onChange={(e)=>setFormData({...formData, password:e.target.value})} />
               <PasswordInput label="Confirm Password" value={formData.confirmPassword} onChange={(e)=>setFormData({...formData, confirmPassword:e.target.value})} />
-              <button type="submit" className="w-full mt-4 text-white bg-[#3B0A0A] hover:bg-red-900 font-bold rounded-xl text-sm py-4 shadow-lg uppercase tracking-wide">CREATE ACCOUNT</button>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 bg-gray-50 text-gray-500 font-bold py-3 rounded-xl text-[10px] uppercase hover:bg-gray-100 transition-all">Cancel</button>
+                <button type="submit" className="flex-1 bg-[#3B0A0A] text-white font-bold py-3 rounded-xl text-[10px] uppercase hover:bg-red-900 transition-all shadow-lg active:scale-95">Create Account</button>
+              </div>
             </form>
           </div>
         </div>
+      )}
 
-        <div className="lg:col-span-2 h-full flex flex-col">
-          <div className="flex items-center justify-between border-b mb-6 pb-4 shrink-0">
-            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[#3B0A0A]"><Users className="h-5 w-5" /> User Directory</h2>
-            <span className="text-xs font-bold bg-gray-100 text-gray-500 px-3 py-1 rounded-full">{regularUsers.length} Users</span>
-          </div>
-          <div className="flex-1 overflow-y-auto no-scrollbar">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {regularUsers.map((u) => {
-                const unread = unreadCounts[u.uid] || 0;
-                return (
-                  <div key={u.uid} className="group bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden relative">
-                    {/* TOP RIGHT UNREAD INDICATOR */}
-                    {unread > 0 && (
-                      <div className="absolute top-3 right-3 bg-red-600 text-white text-[10px] font-black h-5 w-5 rounded-full flex items-center justify-center shadow-lg border-2 border-white animate-bounce">
-                        {unread}
-                      </div>
-                    )}
-
-                    <div className="p-6 flex flex-col items-center text-center">
-                      <div className="relative mb-4">
-                        <div className="h-20 w-20 rounded-full bg-gray-50 border-4 border-white shadow-md overflow-hidden flex items-center justify-center">
-                          {u.profilePicture ? <img src={u.profilePicture} className="w-full h-full object-cover" /> : <span className="font-black text-2xl text-gray-300">{u.username?.charAt(0).toUpperCase()}</span>}
-                        </div>
-                        <div className={`absolute bottom-1 right-1 w-5 h-5 border-4 border-white rounded-full ${u.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                      </div>
-                      <h3 className="font-black text-gray-800 text-lg uppercase leading-none mb-1">{u.username}</h3>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{u.firstName} {u.lastName}</p>
-                    </div>
-                    <div className="bg-gray-50 p-4 border-t flex gap-3">
-                      <button onClick={() => setChatUser(u)} className={`flex-1 flex items-center justify-center gap-2 text-xs font-bold py-3 rounded-xl uppercase tracking-wide transition-all ${unread > 0 ? 'bg-blue-600 text-white scale-105 shadow-md' : 'text-blue-600 bg-white border border-blue-100 hover:bg-blue-50'}`}>
-                        <MessageSquare size={14} /> {unread > 0 ? 'New Message' : 'Chat'}
-                      </button>
-                      <button onClick={() => setConfirmModal({ isOpen: true, type: 'delete', targetId: u.uid })} className="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 py-3 rounded-xl uppercase tracking-wide transition-colors"><Trash2 size={14} /> Remove</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-      <style>{` .no-scrollbar::-webkit-scrollbar { display: none; } `}</style>
+      <style>{`
+        @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
     </div>
   );
 };
 
-export default UserManagement;
+export default User;

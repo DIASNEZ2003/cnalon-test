@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom'; // Removed BrowserRouter
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth'; 
 import { auth } from './firebase'; 
 import Signup from './Auth/Signup';
 import Login from './Auth/Login';
-import Dashboard from './Pages/Dashboard'; // Corrected path case sensitivity
+import Dashboard from './Pages/Dashboard';
 
 const App = () => {
   const [user, setUser] = useState(null);
