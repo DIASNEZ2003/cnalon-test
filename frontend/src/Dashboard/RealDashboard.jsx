@@ -6,14 +6,14 @@ import {
   FlaskConical, Wallet, PieChart as PieIcon,
   Clock, Sun, Moon, BarChart3, ArrowUpRight, ArrowDownRight,
   GitCompare, X, Eye, Pill, HeartPulse, CheckCircle,
-  Package // Added this for the feeds icon
+  Package, Home, Settings, Save
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Legend,
-  PieChart, Pie, Cell, ReferenceLine, BarChart, Bar, ComposedChart
+  PieChart, Pie, Cell, ReferenceLine, BarChart, Bar, ComposedChart, Line
 } from 'recharts';
 
 // --- HELPER: GET COLOR FOR VITAMIN NAME ---
@@ -30,7 +30,14 @@ const getVitaminColor = (name) => {
   return '#14b8a6'; 
 };
 
-// --- HELPER: STRICT DATE DIFFERENCE (Fixes the Day Count Issue) ---
+// --- CONFIG: FEED COLORS ---
+const FEED_COLORS = {
+    Booster: '#22c55e',   // Green (Emerald-500)
+    Starter: '#15803d',   // Dark Green (Green-700)
+    Finisher: '#eab308',  // Yellow (Yellow-500)
+};
+
+// --- HELPER: STRICT DATE DIFFERENCE ---
 const calculateDaysStrict = (startDateStr) => {
     if (!startDateStr) return 1;
     const [startYear, startMonth, startDay] = startDateStr.split('-').map(Number);
@@ -166,16 +173,90 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
   );
 };
 
+// --- PEN METRIC CARD (UPDATED WITH HOVER) ---
+const PenMetricCard = ({ title, count, capacity, chartData }) => {
+    
+    const CustomPenTooltip = ({ active, payload, label }) => {
+        if (active && payload && payload.length) {
+            return (
+                <div className="bg-white p-2 border border-gray-200 shadow-lg rounded-lg text-xs z-50">
+                    <p className="font-bold text-gray-500 uppercase mb-1">{label}</p>
+                    {payload.map((entry, index) => (
+                        <p key={index} style={{ color: entry.color }} className="font-bold">
+                            {entry.name}: {Number(entry.value).toLocaleString()}
+                        </p>
+                    ))}
+                </div>
+            );
+        }
+        return null;
+    };
+
+    return (
+        <div className="relative group bg-white rounded-2xl shadow-sm border border-gray-100 h-36 transition-all duration-300 overflow-hidden">
+            {/* FRONT VIEW */}
+            <div className="absolute inset-0 p-5 flex flex-col justify-between z-10 bg-white group-hover:opacity-0 transition-opacity duration-300 text-center">
+                <div className="flex flex-col items-center">
+                    <div className="p-2 bg-indigo-50 rounded-full mb-2">
+                        <Home size={20} className="text-indigo-600" />
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
+                </div>
+                <div>
+                    <h3 className="text-2xl font-black text-indigo-900">
+                        {count.toLocaleString()} <span className="text-xs font-normal text-gray-400">heads</span>
+                    </h3>
+                    <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
+                        <div className="bg-indigo-500 h-full" style={{ width: `${Math.min((count / capacity) * 100, 100)}%` }}></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* HOVER VIEW (BAR GRAPH) */}
+            <div className="absolute inset-0 z-20 bg-white p-2 flex flex-col opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                 <div className="flex justify-between items-center mb-1 pb-1 border-b border-gray-50 px-2 pt-1">
+                    <p className="text-[10px] font-black text-gray-600 uppercase">{title} Stats</p>
+                    <span className="text-[9px] text-white px-1.5 py-0.5 rounded font-bold bg-indigo-500">ESTIMATED</span>
+                </div>
+                <div className="flex-1 w-full h-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 700 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                            <Tooltip content={<CustomPenTooltip />} cursor={{ fill: '#f8fafc', opacity: 0.5 }} />
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={20}>
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const RealDashboard = () => {
   const [activeBatch, setActiveBatch] = useState(null);
   const [previousBatch, setPreviousBatch] = useState(null); 
   const [allBatchesData, setAllBatchesData] = useState([]); 
   const [forecastData, setForecastData] = useState([]);
+  const [weightForecast, setWeightForecast] = useState([]); 
   const [inventoryForecast, setInventoryForecast] = useState([]); 
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
-  const [showCompareModal, setShowCompareModal] = useState(false); 
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Settings State
+  const [settings, setSettings] = useState({
+      population: 0,
+      pens: 5,
+      weight: 40
+  });
 
   const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
   const backendUrl = "http://localhost:8000";
@@ -218,6 +299,13 @@ const RealDashboard = () => {
         setAllBatchesData(batchList);
 
         if (firstActive) {
+          // Initialize Settings
+          setSettings({
+              population: firstActive.startingPopulation || 0,
+              pens: firstActive.penCount || 5,
+              weight: firstActive.averageChickWeight || 40
+          });
+
           let totalExp = 0, totalSales = 0, feedKilos = 0, vitaminGrams = 0, harvestedHeads = 0, totalMortality = 0, currentWeight = 0;
           if (firstActive.expenses) Object.values(firstActive.expenses).forEach(exp => totalExp += Number(exp.amount || 0));
           if (firstActive.feed_logs) Object.values(firstActive.feed_logs).forEach(log => feedKilos += (Number(log.am || 0) + Number(log.pm || 0)));
@@ -244,14 +332,68 @@ const RealDashboard = () => {
         try {
           const token = await currentUser.getIdToken();
           const feedRes = await fetch(`${backendUrl}/get-feed-forecast/${activeBatch.id}`, { headers: { 'Authorization': `Bearer ${token}` }});
-          if (feedRes.ok) setForecastData((await feedRes.json()).forecast);
+          
+          if (feedRes.ok) {
+              const data = await feedRes.json();
+              // --- FIX: SAFETY CHECK BEFORE SETTING DATA ---
+              const feed = data.feedForecast || [];
+              const weight = data.weightForecast || [];
+
+              const mergedData = feed.map(f => {
+                  const matchingWeight = weight.find(w => {
+                      // Safety check for weight day string
+                      if(w.day) {
+                          const weightDayNum = parseInt(w.day.replace('Day ', '')); 
+                          return weightDayNum === f.day;
+                      }
+                      return false;
+                  });
+
+                  return {
+                      ...f,
+                      // --- APPLY SPECIFIC COLORS FOR CHART SPLITTING ---
+                      Booster: f.feedType === 'Booster' ? f.targetKilos : 0,
+                      Starter: f.feedType === 'Starter' ? f.targetKilos : 0,
+                      Finisher: f.feedType === 'Finisher' ? f.targetKilos : 0,
+                      projectedWeight: matchingWeight ? matchingWeight.weight : null
+                  };
+              });
+
+              setForecastData(mergedData);
+          } else {
+              setForecastData([]);
+          }
+          
           const invRes = await fetch(`${backendUrl}/get-inventory-forecast/${activeBatch.id}`, { headers: { 'Authorization': `Bearer ${token}` }});
           if (invRes.ok) setInventoryForecast(await invRes.json());
-        } catch (err) { console.error("Forecast Error:", err); } finally { setLoadingForecast(false); }
+          
+        } catch (err) { 
+            console.error("Forecast Error:", err); 
+            setForecastData([]); // Prevent white screen on error
+        } finally { setLoadingForecast(false); }
       }
     };
     getForecasts();
   }, [activeBatch, currentUser]);
+
+  const handleUpdateSettings = async () => {
+      if(!activeBatch) return;
+      try {
+          const token = await currentUser.getIdToken();
+          await fetch(`${backendUrl}/update-batch-settings/${activeBatch.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                  startingPopulation: parseInt(settings.population),
+                  penCount: parseInt(settings.pens),
+                  averageChickWeight: parseFloat(settings.weight)
+              })
+          });
+          setShowSettingsModal(false);
+      } catch(err) {
+          console.error("Failed to update settings", err);
+      }
+  };
 
   const batchTrendData = useMemo(() => {
       if (!activeBatch) return { daily: [], weekly: [] };
@@ -263,7 +405,6 @@ const RealDashboard = () => {
       for (let i = 0; i < 30; i++) {
           const date = new Date(start); 
           date.setDate(date.getDate() + i); 
-          
           const year = date.getFullYear();
           const month = String(date.getMonth() + 1).padStart(2, '0');
           const day = String(date.getDate()).padStart(2, '0');
@@ -285,6 +426,31 @@ const RealDashboard = () => {
       } else { [1,2,3,4].forEach(w => weekly.push({ name: `Week ${w}`, weight: 0 })); }
       return { daily, weekly };
   }, [activeBatch]);
+
+  // --- PEN DISTRIBUTION LOGIC (WITH HOVER DATA) ---
+  const penDistribution = useMemo(() => {
+    if (!activeBatch) return [];
+    const currentPopulationCount = (activeBatch.startingPopulation || 0) - stats.mortality - stats.qtyHarvested;
+    const penCount = activeBatch.penCount || 5; 
+    const basePerPen = Math.floor(currentPopulationCount / penCount);
+    const remainder = currentPopulationCount % penCount;
+
+    return Array.from({ length: penCount }, (_, i) => {
+        const heads = i < remainder ? basePerPen + 1 : basePerPen;
+        const ratio = currentPopulationCount > 0 ? heads / currentPopulationCount : 0;
+        
+        return {
+            id: i + 1,
+            count: heads,
+            capacity: Math.ceil((activeBatch.startingPopulation || 0) / penCount),
+            stats: [
+                { name: 'Mort.', value: Math.round(stats.mortality * ratio) || 0, color: '#ef4444' }, 
+                { name: 'Feed', value: Math.round(stats.totalFeedKilos * ratio) || 0, color: '#f97316' }, 
+                { name: 'Vits', value: Math.round(stats.totalVitaminGrams * ratio) || 0, color: '#10b981' } 
+            ]
+        };
+    });
+  }, [activeBatch, stats.mortality, stats.qtyHarvested, stats.totalFeedKilos, stats.totalVitaminGrams]);
 
   const getBatchMetrics = (batch) => {
     if (!batch) return null;
@@ -331,12 +497,20 @@ const RealDashboard = () => {
   }, [activeBatch]);
 
   const todayFeedStats = useMemo(() => {
-    if (!activeBatch || !forecastData.length) return { recommended: 0, actual: 0 };
+    // FIX: Add check for empty forecastData
+    if (!activeBatch || !forecastData || forecastData.length === 0) return { recommended: 0, actual: 0 };
+    
     const rec = forecastData.find(d => d.day === currentBatchDay);
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     let act = 0;
-    if (activeBatch.feed_logs && activeBatch.feed_logs[todayStr]) act = Number(activeBatch.feed_logs[todayStr].am || 0) + Number(activeBatch.feed_logs[todayStr].pm || 0);
+    if (activeBatch.feed_logs && activeBatch.feed_logs[todayStr]) {
+        act = Number(activeBatch.feed_logs[todayStr].am || 0) + Number(activeBatch.feed_logs[todayStr].pm || 0);
+    }
+    
+    // Fallback
+    if (!rec && currentBatchDay === 1 && forecastData.length > 0) return { recommended: forecastData[0].targetKilos, actual: act, type: forecastData[0].feedType };
+    
     return { recommended: rec ? rec.targetKilos : 0, actual: act, type: rec ? rec.feedType : 'N/A' };
   }, [activeBatch, forecastData, currentBatchDay]);
 
@@ -364,7 +538,12 @@ const RealDashboard = () => {
 
   const feedBreakdown = useMemo(() => {
     const totals = { Booster: 0, Starter: 0, Finisher: 0, Total: 0 };
-    forecastData.forEach(d => { if (totals[d.feedType] !== undefined) totals[d.feedType] += d.targetKilos; totals.Total += d.targetKilos; });
+    if (forecastData && forecastData.length > 0) {
+        forecastData.forEach(d => { 
+            if (totals[d.feedType] !== undefined) totals[d.feedType] += d.targetKilos; 
+            totals.Total += d.targetKilos; 
+        });
+    }
     return totals;
   }, [forecastData]);
 
@@ -399,8 +578,18 @@ const RealDashboard = () => {
   const CustomFeedTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      return ( <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-100"><p className="text-[10px] font-bold text-gray-400 uppercase">Day {label} {label === currentBatchDay ? '(Today)' : ''}</p><p className="text-sm font-black text-indigo-600">{data.feedType}</p><p className="text-xs font-bold text-gray-700">{payload[0].value} kg</p></div> );
-    } return null;
+      return ( 
+        <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase">Day {label} {label === currentBatchDay ? '(Today)' : ''}</p>
+            <p className="text-sm font-black text-indigo-600">{data.feedType}</p>
+            {data.Booster > 0 && <p className="text-xs font-bold" style={{ color: FEED_COLORS.Booster }}>Booster: {data.Booster} kg</p>}
+            {data.Starter > 0 && <p className="text-xs font-bold" style={{ color: FEED_COLORS.Starter }}>Starter: {data.Starter} kg</p>}
+            {data.Finisher > 0 && <p className="text-xs font-bold" style={{ color: FEED_COLORS.Finisher }}>Finisher: {data.Finisher} kg</p>}
+            {data.projectedWeight && <p className="text-xs font-bold text-purple-600 mt-1 border-t border-gray-100 pt-1">Avg Weight: {data.projectedWeight} g</p>}
+        </div> 
+      );
+    } 
+    return null;
   };
 
   const CustomVitaminTooltip = ({ active, payload, label }) => {
@@ -416,8 +605,12 @@ const RealDashboard = () => {
       {/* HEADER */}
       <div className="bg-[#3B0A0A] p-6 rounded-2xl shadow-xl text-white mb-8 relative overflow-hidden group">
         <div className="relative z-10 flex justify-between items-start mb-4">
-          <div className="flex items-center gap-2"><Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase">{activeBatch.batchName}</h1>{previousBatch && <button onClick={() => setShowCompareModal(true)} className="ml-2 flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded-lg text-[10px] uppercase font-bold transition-colors border border-white/10"><GitCompare size={12} /> Compare vs Last</button>}</div>
           <div className="flex items-center gap-2">
+              <Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase">{activeBatch.batchName}</h1>
+              {previousBatch && <button onClick={() => setShowCompareModal(true)} className="ml-2 flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded-lg text-[10px] uppercase font-bold transition-colors border border-white/10"><GitCompare size={12} /> Compare vs Last</button>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowSettingsModal(true)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"><Settings size={16} /></button>
             <span className="text-xs text-orange-200 font-bold uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded">Day {currentBatchDay} / 30</span>
             <span className="text-xs bg-green-500/20 text-green-400 px-3 py-1 rounded border border-green-500/30 font-bold uppercase">{activeBatch.status}</span>
           </div>
@@ -439,23 +632,40 @@ const RealDashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <MetricCard title="Live Pop." value={currentPop} unit="heads" icon={Users} colorClass="text-cyan-700" bgClass="bg-cyan-50" barColor="#0891b2" graphData={batchTrendData.daily} graphKey="population" />
         <MetricCard title="Mortality" value={stats.mortality} unit="heads" icon={Skull} colorClass="text-red-600" bgClass="bg-red-50" barColor="#dc2626" graphData={batchTrendData.daily} graphKey="mortality" />
-        {/* UPDATED FEEDS ICON TO PACKAGE (MATCHING SACK/BAG STYLE) */}
         <MetricCard title="Feed Used" value={stats.totalFeedKilos} unit="kg" icon={Package} colorClass="text-orange-700" bgClass="bg-orange-50" barColor="#f97316" graphData={batchTrendData.daily} graphKey="feed" />
-        {/* UPDATED VITAMINS ICON TO FLASKCONICAL (MATCHING MEDKIT STYLE) */}
         <MetricCard title="Vitamins" value={stats.totalVitaminGrams} unit="g/ml" icon={FlaskConical} colorClass="text-green-700" bgClass="bg-green-50" barColor="#16a34a" graphData={batchTrendData.daily} graphKey="vitamins" />
         <MetricCard title="Avg Weight" value={stats.avgWeight} unit="g" icon={Scale} colorClass="text-amber-700" bgClass="bg-amber-50" barColor="#d97706" graphData={batchTrendData.weekly} graphKey="weight" xKey="name" />
         <MetricCard title="Qty Harvested" value={stats.qtyHarvested} prevValue={prevMetrics ? prevMetrics.harvested : 0} unit="heads" icon={CheckCircle} colorClass="text-emerald-700" bgClass="bg-emerald-50" barColor="#10b981" isComparison={true} />
       </div>
 
-      {/* --- SECTION 3: FEED CHART SECTION --- */}
+      {/* --- PEN STATUS SECTION (UPDATED) --- */}
+      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Pen Status (Current Distribution)</h2>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        {penDistribution.map((pen) => (
+          <PenMetricCard 
+             key={pen.id} 
+             title={`Pen ${pen.id}`} 
+             count={pen.count} 
+             capacity={pen.capacity} 
+             chartData={pen.stats} 
+          />
+        ))}
+      </div>
+
+      {/* --- SECTION 3: FEED & WEIGHT FORECAST CHART --- */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            {/* UPDATED ICON BOX */}
-            <div className="flex items-center gap-2"><div className="p-2 bg-orange-50 rounded-lg"><Package size={18} className="text-orange-600" /></div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption Forecast</h3></div>
+            <div className="flex items-center gap-2">
+                <div className="p-2 bg-orange-50 rounded-lg"><Package size={18} className="text-orange-600" /></div>
+                <div>
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption & Weight Forecast</h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Left: Feed (KG) | Right: Avg Weight (G)</p>
+                </div>
+            </div>
             <div className="flex flex-wrap gap-2 text-xs">
-                <div key="Booster" className="px-3 py-1 bg-yellow-50 rounded-lg border border-yellow-100"><span className="block text-[9px] font-bold text-yellow-600 uppercase">Booster</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Booster'] ? feedBreakdown['Booster'].toFixed(1) : '0.0'}</span></div>
-                <div key="Starter" className="px-3 py-1 bg-orange-50 rounded-lg border border-orange-100"><span className="block text-[9px] font-bold text-orange-600 uppercase">Starter</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Starter'] ? feedBreakdown['Starter'].toFixed(1) : '0.0'}</span></div>
-                <div key="Finisher" className="px-3 py-1 bg-red-50 rounded-lg border border-red-100"><span className="block text-[9px] font-bold text-red-600 uppercase">Finisher</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Finisher'] ? feedBreakdown['Finisher'].toFixed(1) : '0.0'}</span></div>
+                <div key="Booster" className="px-3 py-1 bg-green-50 rounded-lg border border-green-100"><span className="block text-[9px] font-bold text-green-600 uppercase">Booster</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Booster'] ? feedBreakdown['Booster'].toFixed(1) : '0.0'}</span></div>
+                <div key="Starter" className="px-3 py-1 bg-emerald-50 rounded-lg border border-emerald-100"><span className="block text-[9px] font-bold text-emerald-600 uppercase">Starter</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Starter'] ? feedBreakdown['Starter'].toFixed(1) : '0.0'}</span></div>
+                <div key="Finisher" className="px-3 py-1 bg-yellow-50 rounded-lg border border-yellow-100"><span className="block text-[9px] font-bold text-yellow-600 uppercase">Finisher</span><span className="font-black text-gray-700 text-sm">{feedBreakdown['Finisher'] ? feedBreakdown['Finisher'].toFixed(1) : '0.0'}</span></div>
                 <div className="px-3 py-1 bg-indigo-600 rounded-lg border border-indigo-700 text-white"><span className="block text-[9px] font-bold uppercase opacity-80">Total</span><span className="font-black text-sm">{feedBreakdown.Total.toFixed(1)} kg</span></div>
             </div>
         </div>
@@ -463,28 +673,23 @@ const RealDashboard = () => {
             <div className="lg:col-span-3 h-64 w-full">
               {!loadingForecast && (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={forecastData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                    <defs>
-                        <linearGradient id="feedStroke" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stopColor="#FACC15" />   
-                            <stop offset="33%" stopColor="#FACC15" />  
-                            <stop offset="33%" stopColor="#F97316" />  
-                            <stop offset="73%" stopColor="#F97316" />  
-                            <stop offset="73%" stopColor="#EF4444" />  
-                            <stop offset="100%" stopColor="#EF4444" /> 
-                        </linearGradient>
-                        <linearGradient id="feedFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                        </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" /><XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} /><Tooltip content={<CustomFeedTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
-                    <Area name="Feed Intake" type="monotone" dataKey="targetKilos" stroke="url(#feedStroke)" fill="url(#feedFill)" strokeWidth={3} />
-                    <ReferenceLine x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: 'Today', fill: '#f97316', fontSize: 10, fontWeight: 'bold' }} />
-                  </AreaChart>
+                  <ComposedChart data={forecastData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#8b5cf6'}} />
+                    <Tooltip content={<CustomFeedTooltip />} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                    <Area yAxisId="left" type="monotone" dataKey="Booster" stackId="1" stroke={FEED_COLORS.Booster} fill={FEED_COLORS.Booster} strokeWidth={2} fillOpacity={0.6} />
+                    <Area yAxisId="left" type="monotone" dataKey="Starter" stackId="1" stroke={FEED_COLORS.Starter} fill={FEED_COLORS.Starter} strokeWidth={2} fillOpacity={0.6} />
+                    <Area yAxisId="left" type="monotone" dataKey="Finisher" stackId="1" stroke={FEED_COLORS.Finisher} fill={FEED_COLORS.Finisher} strokeWidth={2} fillOpacity={0.6} />
+                    <Line yAxisId="right" connectNulls type="monotone" dataKey="projectedWeight" name="Avg Weight (g)" stroke="#8b5cf6" strokeWidth={3} dot={{r: 4, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff'}} activeDot={{ r: 6 }} />
+                    <ReferenceLine yAxisId="left" x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" label={{ position: 'top', value: 'Today', fill: '#f97316', fontSize: 10, fontWeight: 'bold' }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               )}
             </div>
+            
             <div className="lg:col-span-1 bg-[#3B0A0A] rounded-2xl p-4 shadow-xl text-white">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-3"><Clock size={14} className="text-orange-400" /><h4 className="text-[10px] font-black uppercase tracking-widest">Today's Split (Day {currentBatchDay}/30)</h4></div>
                 <div className="space-y-4">
@@ -500,12 +705,9 @@ const RealDashboard = () => {
       {/* --- SECTION 4: VITAMIN & MEDICINE FORECAST --- */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            {/* UPDATED ICON BOX */}
             <div className="flex items-center gap-2">
                 <div className="p-2 bg-green-50 rounded-lg"><FlaskConical size={18} className="text-green-600" /></div>
-                <div>
-                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Vitamins Consumption Forecast</h3>
-                </div>
+                <div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Vitamins Consumption Forecast</h3></div>
             </div>
         </div>
 
@@ -532,69 +734,37 @@ const RealDashboard = () => {
                   <Clock size={14} className="text-teal-400" />
                   <h4 className="text-[10px] font-black uppercase tracking-widest">Today's Split (Day {currentBatchDay}/30)</h4>
               </div>
-              
               {todayVitaminStats.names.length > 0 ? (
                   <div className="space-y-4">
-                      <div className="grid grid-cols-2 text-[8px] font-black text-white/40 uppercase px-1">
-                          <span>Recommend</span><span className="text-right">Actual Used</span>
-                      </div>
+                      <div className="grid grid-cols-2 text-[8px] font-black text-white/40 uppercase px-1"><span>Recommend</span><span className="text-right">Actual Used</span></div>
                       <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                          <div className="flex items-center gap-1 text-[9px] font-black text-teal-300 uppercase mb-2">
-                              <Sun size={12}/> AM Period
-                          </div>
+                          <div className="flex items-center gap-1 text-[9px] font-black text-teal-300 uppercase mb-2"><Sun size={12}/> AM Period</div>
                           <div className="flex justify-between items-end">
-                              <span className="text-sm font-black">
-                                  {(todayVitaminStats.totalTarget / 2).toFixed(2)} 
-                                  <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span>
-                              </span>
-                              <span className="text-sm font-black text-white">
-                                  {todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) 
-                                      ? (todayVitaminStats.totalTarget / 2).toFixed(2) 
-                                      : todayVitaminStats.actual.toFixed(2)} 
-                                  <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span>
-                              </span>
+                              <span className="text-sm font-black">{(todayVitaminStats.totalTarget / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
+                              <span className="text-sm font-black text-white">{todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) ? (todayVitaminStats.totalTarget / 2).toFixed(2) : todayVitaminStats.actual.toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
                           </div>
                       </div>
                       <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                          <div className="flex items-center gap-1 text-[9px] font-black text-emerald-300 uppercase mb-2">
-                              <Moon size={12}/> PM Period
-                          </div>
+                          <div className="flex items-center gap-1 text-[9px] font-black text-emerald-300 uppercase mb-2"><Moon size={12}/> PM Period</div>
                           <div className="flex justify-between items-end">
-                              <span className="text-sm font-black">
-                                  {(todayVitaminStats.totalTarget / 2).toFixed(2)} 
-                                  <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span>
-                              </span>
-                              <span className="text-sm font-black text-white">
-                                  {todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) 
-                                      ? (todayVitaminStats.actual - (todayVitaminStats.totalTarget / 2)).toFixed(2) 
-                                      : '0.00'} 
-                                  <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span>
-                              </span>
+                              <span className="text-sm font-black">{(todayVitaminStats.totalTarget / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
+                              <span className="text-sm font-black text-white">{todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) ? (todayVitaminStats.actual - (todayVitaminStats.totalTarget / 2)).toFixed(2) : '0.00'} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
                           </div>
                       </div>
                       <div className="mt-4 pt-4 border-t border-white/10">
-                          <div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-2">
-                              <span>Daily Coverage</span>
-                              <span>{todayVitaminStats.totalTarget > 0 ? ((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100).toFixed(0) : 0}%</span>
-                          </div>
+                          <div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-2"><span>Daily Coverage</span><span>{todayVitaminStats.totalTarget > 0 ? ((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100).toFixed(0) : 0}%</span></div>
                           <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                              <div 
-                                  className="bg-gradient-to-r from-teal-400 to-emerald-500 h-full transition-all duration-700" 
-                                  style={{ width: `${todayVitaminStats.totalTarget > 0 ? Math.min((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100, 100) : 0}%` }} 
-                              />
+                              <div className="bg-gradient-to-r from-teal-400 to-emerald-500 h-full transition-all duration-700" style={{ width: `${todayVitaminStats.totalTarget > 0 ? Math.min((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100, 100) : 0}%` }} />
                           </div>
                           <div className="flex justify-between mt-3 text-[10px] font-black">
-                              <span className="text-teal-300 uppercase tracking-tighter truncate max-w-[120px]">
-                                  {todayVitaminStats.names.join(', ')}
-                              </span>
+                              <span className="text-teal-300 uppercase tracking-tighter truncate max-w-[120px]">{todayVitaminStats.names.join(', ')}</span>
                               <span className="text-white">Day {currentBatchDay}</span>
                           </div>
                       </div>
                   </div>
               ) : (
                   <div className="h-full flex flex-col items-center justify-center opacity-50 text-center space-y-2">
-                      <CheckCircle size={32} />
-                      <p className="text-xs font-bold uppercase">No Meds Required Today</p>
+                      <CheckCircle size={32} /><p className="text-xs font-bold uppercase">No Meds Required Today</p>
                   </div>
               )}
             </div>
@@ -606,6 +776,39 @@ const RealDashboard = () => {
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100"><div className="flex items-center gap-2 mb-6"><div className="p-2 bg-rose-50 rounded-lg"><PieIcon size={18} className="text-rose-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Expense Overview</h3></div></div><div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expensePieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">{expensePieData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => formatCurrency(value)} /><Legend iconType="circle" /></PieChart></ResponsiveContainer></div></div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100"><div className="flex items-center gap-2 mb-6"><div className="p-2 bg-blue-50 rounded-lg"><BarChart3 size={18} className="text-blue-600" /></div><div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">History Comparison</h3><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Net Income Across Batches</p></div></div><div className="h-80 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={historyComparisonData}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip formatter={(value) => [formatCurrency(value), 'Net Income']} /><Bar dataKey="income" radius={[10, 10, 0, 0]} barSize={40}>{historyComparisonData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.status === 'active' ? '#f97316' : '#3B0A0A'} />)}</Bar></BarChart></ResponsiveContainer></div></div>
       </div>
+
+      {/* --- SETTINGS MODAL --- */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
+                <div className="bg-gray-900 p-4 text-white flex justify-between items-center">
+                    <h3 className="font-bold text-sm uppercase flex items-center gap-2"><Settings size={16}/> Configuration</h3>
+                    <button onClick={() => setShowSettingsModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Starting Population</label>
+                        <input type="number" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                            value={settings.population} onChange={(e) => setSettings({...settings, population: e.target.value})} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Number of Pens</label>
+                        <input type="number" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                            value={settings.pens} onChange={(e) => setSettings({...settings, pens: e.target.value})} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Avg Starting Weight (g)</label>
+                        <input type="number" step="0.1" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                            value={settings.weight} onChange={(e) => setSettings({...settings, weight: e.target.value})} />
+                        <p className="text-[10px] text-gray-400 mt-1">Default: 33g - 50g</p>
+                    </div>
+                    <button onClick={handleUpdateSettings} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                        <Save size={18} /> Save Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* --- COMPARE MODAL --- */}
       {showCompareModal && previousBatch && currentMetrics && prevMetrics && (

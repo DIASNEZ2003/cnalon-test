@@ -30,7 +30,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# 2. UTILITY: PHILIPPINE TIME (FIXED)
+# 2. UTILITY: PHILIPPINE TIME
 # ---------------------------------------------------------
 def get_ph_time():
     """Returns current timestamp in milliseconds for Philippines (UTC+8)"""
@@ -48,9 +48,14 @@ class BatchSchema(BaseModel):
     expectedCompleteDate: str 
     startingPopulation: int
     vitaminBudget: Optional[float] = 0.0
+    penCount: Optional[int] = 5
+    averageChickWeight: Optional[float] = 40.0 
 
 class BatchUpdateSchema(BaseModel):
-    status: str
+    status: Optional[str] = None
+    startingPopulation: Optional[int] = None
+    penCount: Optional[int] = None
+    averageChickWeight: Optional[float] = None
 
 class UserRegisterSchema(BaseModel):
     firstName: str
@@ -140,7 +145,6 @@ class DeleteWeightLogSchema(BaseModel):
     batchId: str
     date: str
 
-# --- NEW: PERSONNEL SCHEMAS ---
 class PersonnelSchema(BaseModel):
     firstName: str
     lastName: str
@@ -159,22 +163,30 @@ class EditPersonnelSchema(BaseModel):
     photoUrl: Optional[str] = ""
 
 # ---------------------------------------------------------
-# 4. KNOWLEDGE BASE (THE "BRAIN")
+# 4. KNOWLEDGE BASE (FEED & WEIGHT LOGIC)
 # ---------------------------------------------------------
 
+# FEED LOGIC: Grams per Bird per Day (Sheet 1 Yellow)
 FEED_LOGIC_TEMPLATE = [
-    (range(1, 2), 12.0, "Booster"),
-    (range(2, 4), 16.0, "Booster"),
-    (range(4, 7), 23.0, "Booster"),
-    (range(7, 11), 35.0, "Booster"),
-    (range(11, 14), 55.0, "Starter"), 
-    (range(14, 17), 75.0, "Starter"),
-    (range(17, 20), 95.0, "Starter"),
-    (range(20, 23), 115.0, "Finisher"),
-    (range(23, 26), 135.0, "Finisher"),
-    (range(26, 28), 155.0, "Finisher"),
-    (range(28, 31), 170.0, "Finisher"),
+    (range(1, 2), 35.0, "Booster"),      # Day 1: 30g/bird
+    (range(2, 4), 35.0, "Booster"),      # Day 2-3: 35g/bird
+    (range(4, 7), 45.0, "Booster"),      # Day 4-6: 45g/bird
+    (range(7, 11), 55.0, "Booster"),     # Day 7-10: 55g/bird
+    (range(11, 15), 85.0, "Starter"),    # Day 11-14: 85g/bird
+    (range(15, 21), 115.0, "Starter"),   # Day 15-20: 115g/bird
+    (range(21, 26), 145.0, "Finisher"),  # Day 21-25: 145g/bird
+    (range(26, 31), 170.0, "Finisher"),  # Day 26-30: 170g/bird
 ]
+
+# STANDARD BROILER GROWTH (TARGET WEIGHTS in Grams)
+STANDARD_WEIGHTS = {
+    0: 42,    # Day 0 (Chicks)
+    7: 189,   # Day 7
+    14: 480,  # Day 14
+    21: 969,  # Day 21
+    28: 1623, # Day 28
+    35: 2333  # Day 35
+}
 
 MEDICATION_DB = {
     "vetracin": {"adult_dose": 100.0, "unit": "g"}, 
@@ -190,7 +202,54 @@ MEDICATION_DB = {
 }
 
 # ---------------------------------------------------------
-# 5. AUTHENTICATION & USER MGMT
+# 5. CALCULATION ENGINES
+# ---------------------------------------------------------
+
+def generate_forecast_data(population: int):
+    """
+    Calculates forecast based on population using Sheet 1 formula.
+    Formula: (Grams_per_bird * Population) / 1000 = Total KG
+    """
+    forecast_data = []
+    print(f"--- Recalculating Feed for Pop: {population} ---")
+    for day in range(1, 31):
+        f_match = next((item for item in FEED_LOGIC_TEMPLATE if day in item[0]), None)
+        if f_match:
+            grams_per_bird = f_match[1]
+            target_kilos = (grams_per_bird * population) / 1000.0
+            
+            # Debug print for Day 1 to confirm logic
+            if day == 1:
+                print(f"Day 1: ({grams_per_bird}g * {population}) / 1000 = {target_kilos} kg")
+
+            forecast_data.append({
+                "day": day,
+                "feedType": f_match[2],
+                "targetKilos": round(target_kilos, 2)
+            })
+    return forecast_data
+
+def generate_weight_forecast(start_weight: float):
+    """
+    Generates target weights for Days 7, 14, 21, 28.
+    Scales the standard curve based on the actual starting chick weight vs standard (42g).
+    """
+    ratio = start_weight / 42.0 
+    weight_data = []
+    target_days = [7, 14, 21, 28]
+    
+    for d in target_days:
+        std_w = STANDARD_WEIGHTS.get(d, 0)
+        projected = std_w * ratio
+        weight_data.append({
+            "day": f"Day {d}",
+            "weight": int(projected),
+            "unit": "g"
+        })
+    return weight_data
+
+# ---------------------------------------------------------
+# 6. API ENDPOINTS
 # ---------------------------------------------------------
 
 @app.post("/register-user")
@@ -272,23 +331,6 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ---------------------------------------------------------
-# 6. BATCH OPERATIONS
-# ---------------------------------------------------------
-
-def generate_forecast_data(starting_population: int):
-    ratio = starting_population / 1000.0
-    forecast_data = []
-    for day in range(1, 31):
-        f_match = next((item for item in FEED_LOGIC_TEMPLATE if day in item[0]), None)
-        if f_match:
-            forecast_data.append({
-                "day": day,
-                "feedType": f_match[2],
-                "targetKilos": round(f_match[1] * ratio, 2)
-            })
-    return forecast_data
-
 @app.post("/create-batch")
 async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -298,13 +340,17 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
         auth.verify_id_token(token)
         ref_batch = db.reference('global_batches')
         new_batch_ref = ref_batch.push()
+        
         forecast_list = generate_forecast_data(data.startingPopulation)
+        
         new_batch_ref.set({
             "batchName": data.batchName,
             "dateCreated": data.dateCreated,
             "expectedCompleteDate": data.expectedCompleteDate,
             "startingPopulation": data.startingPopulation,
             "vitaminBudget": data.vitaminBudget,
+            "penCount": data.penCount,
+            "averageChickWeight": data.averageChickWeight,
             "status": "active",
             "feedForecast": forecast_list
         })
@@ -337,10 +383,38 @@ async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: st
     try:
         auth.verify_id_token(token)
         ref_batch = db.reference(f'global_batches/{batch_id}')
-        ref_batch.update({"status": data.status})
+        
+        updates = {}
+        if data.status is not None:
+            updates["status"] = data.status
+        
+        ref_batch.update(updates)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+# --- NEW: UPDATE BATCH SETTINGS ENDPOINT ---
+@app.put("/update-batch-settings/{batch_id}")
+async def update_batch_settings(batch_id: str, data: BatchUpdateSchema, authorization: str = Header(None)):
+    try:
+        token = authorization.split("Bearer ")[1]
+        auth.verify_id_token(token)
+        
+        batch_ref = db.reference(f'global_batches/{batch_id}')
+        updates = {}
+        if data.startingPopulation is not None:
+            updates["startingPopulation"] = data.startingPopulation
+        if data.penCount is not None:
+            updates["penCount"] = data.penCount
+        if data.averageChickWeight is not None:
+            updates["averageChickWeight"] = data.averageChickWeight
+        if data.status is not None:
+            updates["status"] = data.status
+            
+        batch_ref.update(updates)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/delete-batch/{batch_id}")
 async def delete_batch(batch_id: str, authorization: str = Header(None)):
@@ -394,7 +468,7 @@ async def admin_delete_message(data: DeleteMessageSchema, authorization: str = H
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 8. EXPENSES & SALES (FIXED FOR CRUD)
+# 8. EXPENSES & SALES
 # ---------------------------------------------------------
 @app.post("/add-expense")
 async def add_expense(data: ExpenseSchema, authorization: str = Header(None)):
@@ -515,7 +589,7 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 9. FORECASTING & INVENTORY
+# 9. FORECASTING & INVENTORY (FORCE UPDATE LOGIC)
 # ---------------------------------------------------------
 
 @app.get("/get-inventory-forecast/{batch_id}")
@@ -572,7 +646,7 @@ async def get_inventory_forecast(batch_id: str, authorization: str = Header(None
                         current_day = start_day_num
                         
                         while current_inventory > 0 and current_day <= 45:
-                            day_feed_intake = 12.0
+                            day_feed_intake = 30.0 # Default starting intake
                             f_match = next((item for item in FEED_LOGIC_TEMPLATE if current_day in item[0]), None)
                             if f_match: day_feed_intake = f_match[1]
                             elif current_day > 30: day_feed_intake = 170.0
@@ -605,15 +679,28 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
     try:
         batch_ref = db.reference(f'global_batches/{batch_id}')
         batch_data = batch_ref.get()
-        if not batch_data: raise HTTPException(status_code=404, detail="Batch not found")
-        saved_forecast = batch_data.get('feedForecast')
-        if saved_forecast:
-            forecast_list = saved_forecast if isinstance(saved_forecast, list) else list(saved_forecast.values())
-            forecast_list.sort(key=lambda x: x['day'])
-        else:
-            forecast_list = generate_forecast_data(batch_data.get('startingPopulation', 0))
-            batch_ref.child('feedForecast').set(forecast_list)
-        return {"batchName": batch_data.get('batchName'), "forecast": forecast_list}
+        if not batch_data: 
+            raise HTTPException(status_code=404, detail="Batch not found")
+        
+        # 1. GET ACTUAL POPULATION FROM DB
+        population = batch_data.get('startingPopulation', 1000)
+        start_weight = batch_data.get('averageChickWeight', 40.0) # Default 40g if not set
+        
+        # 2. FORCE RECALCULATE (Ignore old saved data)
+        # Using 30.0 g/bird for day 1 -> (30 * 1000) / 1000 = 30.0 kg
+        new_feed_forecast = generate_forecast_data(population)
+        
+        # 3. Calculate Weight Forecast
+        new_weight_forecast = generate_weight_forecast(start_weight)
+        
+        # 4. OVERWRITE DATABASE WITH CORRECT DATA
+        batch_ref.child('feedForecast').set(new_feed_forecast)
+        
+        return {
+            "batchName": batch_data.get('batchName'), 
+            "feedForecast": new_feed_forecast,
+            "weightForecast": new_weight_forecast
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -656,7 +743,7 @@ async def get_all_records(authorization: str = Header(None)):
         for b_id, b_data in batches.items():
             b_name = b_data.get('batchName', 'Unnamed Batch')
 
-            # 1. Mortality Logs
+            # Mortality Logs
             m_logs = b_data.get('mortality_logs', {})
             if m_logs:
                 for date, log in m_logs.items():
@@ -671,7 +758,7 @@ async def get_all_records(authorization: str = Header(None)):
                         "user": log.get('updaterName', 'System')
                     })
 
-            # 2. Feed Logs
+            # Feed Logs
             f_logs = b_data.get('feed_logs', {})
             if f_logs:
                 forecast = b_data.get('feedForecast', [])
@@ -696,7 +783,7 @@ async def get_all_records(authorization: str = Header(None)):
                         "user": log.get('updaterName', 'System')
                     })
 
-            # 3. Vitamin Logs
+            # Vitamin Logs
             v_logs = b_data.get('daily_vitamin_logs', {})
             if v_logs:
                 for date, log in v_logs.items():
@@ -710,7 +797,7 @@ async def get_all_records(authorization: str = Header(None)):
                         "user": log.get('updaterName', 'System')
                     })
 
-            # 4. Weight Logs
+            # Weight Logs
             w_logs = b_data.get('weight_logs', {})
             if w_logs:
                 for date, log in w_logs.items():
@@ -731,17 +818,14 @@ async def get_all_records(authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 11. PERSONNEL MANAGEMENT (NEW!)
+# 11. PERSONNEL MANAGEMENT
 # ---------------------------------------------------------
 
 @app.post("/add-personnel")
 async def add_personnel(data: PersonnelSchema, authorization: str = Header(None)):
     try:
-        # Auth Check
         token = authorization.split("Bearer ")[1]
         auth.verify_id_token(token)
-        
-        # Save to 'personnel' node
         ref_personnel = db.reference('personnel')
         new_ref = ref_personnel.push()
         new_ref.set({
