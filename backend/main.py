@@ -594,85 +594,8 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
 
 @app.get("/get-inventory-forecast/{batch_id}")
 async def get_inventory_forecast(batch_id: str, authorization: str = Header(None)):
-    try:
-        batch_ref = db.reference(f'global_batches/{batch_id}')
-        batch_data = batch_ref.get()
-        if not batch_data:
-            raise HTTPException(status_code=404, detail="Batch not found")
-        
-        population = batch_data.get('startingPopulation', 0)
-        batch_start_date = batch_data.get('dateCreated')
-        pop_ratio = population / 1000.0
-        MAX_ADULT_FEED = 170.0 
-
-        expenses_ref = db.reference(f'global_batches/{batch_id}/expenses')
-        expenses_snapshot = expenses_ref.get()
-        dynamic_forecast = []
-        
-        if expenses_snapshot and batch_start_date:
-            start_date_obj = datetime.strptime(batch_start_date, "%Y-%m-%d")
-
-            for key, item in expenses_snapshot.items():
-                cat = item.get('category', '').lower()
-                name = item.get('itemName', '').lower()
-                expense_date_str = item.get('date')
-                
-                if "vitamin" in cat or "medicine" in cat or "vaccine" in cat:
-                    adult_dose = 100.0
-                    fixed_dose = 0.0
-                    found_unit = item.get('unit', 'g')
-                    is_scalable = True 
-
-                    matched_key = None
-                    for db_key in MEDICATION_DB.keys():
-                        if db_key in name:
-                            matched_key = db_key
-                            break
-                    
-                    if matched_key:
-                        med_info = MEDICATION_DB[matched_key]
-                        if "adult_dose" in med_info:
-                            adult_dose = med_info["adult_dose"]
-                        elif "fixed_dose" in med_info:
-                            fixed_dose = med_info["fixed_dose"]
-                            is_scalable = False
-                        found_unit = med_info.get('unit', found_unit)
-
-                    current_inventory = float(item.get('quantity', 0))
-                    if current_inventory > 0 and expense_date_str:
-                        exp_date_obj = datetime.strptime(expense_date_str, "%Y-%m-%d")
-                        diff_obj = exp_date_obj - start_date_obj
-                        start_day_num = max(1, diff_obj.days + 1)
-                        current_day = start_day_num
-                        
-                        while current_inventory > 0 and current_day <= 45:
-                            day_feed_intake = 30.0 # Default starting intake
-                            f_match = next((item for item in FEED_LOGIC_TEMPLATE if current_day in item[0]), None)
-                            if f_match: day_feed_intake = f_match[1]
-                            elif current_day > 30: day_feed_intake = 170.0
-                            
-                            growth_factor = max(0.20, day_feed_intake / MAX_ADULT_FEED)
-                            if is_scalable:
-                                daily_need = (adult_dose * pop_ratio) * growth_factor
-                            else:
-                                daily_need = fixed_dose * pop_ratio
-
-                            amount_to_use = min(round(daily_need, 2), current_inventory)
-                            if amount_to_use > 0:
-                                dynamic_forecast.append({
-                                    "name": item.get('itemName'),
-                                    "startDay": current_day,
-                                    "endDay": current_day, 
-                                    "dailyAmount": amount_to_use,
-                                    "unit": found_unit
-                                })
-                            current_inventory -= amount_to_use
-                            current_day += 1
-
-        batch_ref.child('vitaminForecast').set(dynamic_forecast)
-        return dynamic_forecast
-    except Exception as e:
-        return []
+    # VITAMIN FORECAST LOGIC REMOVED AS REQUESTED
+    return []
 
 @app.get("/get-feed-forecast/{batch_id}")
 async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):

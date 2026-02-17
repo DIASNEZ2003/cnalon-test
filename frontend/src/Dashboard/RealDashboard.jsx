@@ -16,20 +16,6 @@ import {
   PieChart, Pie, Cell, ReferenceLine, BarChart, Bar, ComposedChart, Line
 } from 'recharts';
 
-// --- HELPER: GET COLOR FOR VITAMIN NAME ---
-const getVitaminColor = (name) => {
-  if (!name) return '#14b8a6'; 
-  const n = name.toLowerCase();
-  if (n.includes('vetracin')) return '#10b981';      
-  if (n.includes('amox')) return '#3b82f6';          
-  if (n.includes('doxy')) return '#8b5cf6';          
-  if (n.includes('electrolytes')) return '#f59e0b';  
-  if (n.includes('broncho')) return '#ef4444';       
-  if (n.includes('vitamin') || n.includes('multi')) return '#ec4899'; 
-  if (n.includes('vaccine') || n.includes('ncd') || n.includes('gumboro')) return '#6366f1'; 
-  return '#14b8a6'; 
-};
-
 // --- CONFIG: FEED COLORS ---
 const FEED_COLORS = {
     Booster: '#22c55e',   // Green (Emerald-500)
@@ -244,7 +230,6 @@ const RealDashboard = () => {
   const [allBatchesData, setAllBatchesData] = useState([]); 
   const [forecastData, setForecastData] = useState([]);
   const [weightForecast, setWeightForecast] = useState([]); 
-  const [inventoryForecast, setInventoryForecast] = useState([]); 
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true); 
@@ -364,8 +349,7 @@ const RealDashboard = () => {
               setForecastData([]);
           }
           
-          const invRes = await fetch(`${backendUrl}/get-inventory-forecast/${activeBatch.id}`, { headers: { 'Authorization': `Bearer ${token}` }});
-          if (invRes.ok) setInventoryForecast(await invRes.json());
+          // REMOVED INVENTORY/VITAMIN FORECAST FETCH AS REQUESTED
           
         } catch (err) { 
             console.error("Forecast Error:", err); 
@@ -514,27 +498,7 @@ const RealDashboard = () => {
     return { recommended: rec ? rec.targetKilos : 0, actual: act, type: rec ? rec.feedType : 'N/A' };
   }, [activeBatch, forecastData, currentBatchDay]);
 
-  const todayVitaminStats = useMemo(() => {
-      if (!currentBatchDay) return { names: [], totalTarget: 0, actual: 0 };
-      const sourceData = (inventoryForecast.length > 0) ? inventoryForecast : (activeBatch?.vitaminForecast || []);
-      const activeItems = sourceData.filter(item => currentBatchDay >= item.startDay && currentBatchDay <= item.endDay);
-      const totalTarget = activeItems.reduce((acc, curr) => acc + curr.dailyAmount, 0);
-      let actualUsed = 0;
-      const now = new Date();
-      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      if (activeBatch?.daily_vitamin_logs && activeBatch.daily_vitamin_logs[todayStr]) actualUsed = Number(activeBatch.daily_vitamin_logs[todayStr].am_amount || 0) + Number(activeBatch.daily_vitamin_logs[todayStr].pm_amount || 0);
-      return { names: activeItems.map(i => i.name), totalTarget, actual: actualUsed, unit: activeItems.length > 0 ? activeItems[0].unit : '' };
-  }, [activeBatch, inventoryForecast, currentBatchDay]);
-
-  const dailyVitaminChartData = useMemo(() => {
-      const sourceData = (inventoryForecast.length > 0) ? inventoryForecast : (activeBatch?.vitaminForecast || []);
-      const data = [];
-      for(let d=1; d<=30; d++){
-          const activeItems = sourceData.filter(item => d >= item.startDay && d <= item.endDay);
-          data.push({ day: d, dosage: activeItems.reduce((a,c)=>a+c.dailyAmount,0), activeNames: activeItems.map(i=>i.name).join(', '), unit: activeItems[0]?.unit || "units" });
-      }
-      return data;
-  }, [activeBatch, inventoryForecast]);
+  // --- REMOVED VITAMIN FORECAST LOGIC HERE ---
 
   const feedBreakdown = useMemo(() => {
     const totals = { Booster: 0, Starter: 0, Finisher: 0, Total: 0 };
@@ -590,13 +554,6 @@ const RealDashboard = () => {
       );
     } 
     return null;
-  };
-
-  const CustomVitaminTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload; if (data.dosage === 0) return null;
-      return ( <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-100 z-50"><p className="text-[10px] font-bold text-gray-400 uppercase">Day {label}</p><p className="text-xs font-black text-teal-600 mb-1">{data.activeNames}</p><p className="text-[10px] font-bold text-gray-500">Total: {data.dosage.toFixed(1)} {data.unit}</p></div> );
-    } return null;
   };
 
   return (
@@ -702,74 +659,7 @@ const RealDashboard = () => {
         </div>
       </div>
 
-      {/* --- SECTION 4: VITAMIN & MEDICINE FORECAST --- */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            <div className="flex items-center gap-2">
-                <div className="p-2 bg-green-50 rounded-lg"><FlaskConical size={18} className="text-green-600" /></div>
-                <div><h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Vitamins Consumption Forecast</h3></div>
-            </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3 h-52 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={dailyVitaminChartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
-                    <Tooltip content={<CustomVitaminTooltip />} />
-                    <Bar dataKey="dosage" radius={[4, 4, 0, 0]} barSize={15}>
-                      {dailyVitaminChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={getVitaminColor(entry.activeNames)} />
-                      ))}
-                    </Bar>
-                    <ReferenceLine x={currentBatchDay} stroke="#f97316" strokeWidth={2} strokeDasharray="3 3" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="lg:col-span-1 bg-teal-900 rounded-2xl p-4 shadow-xl text-white">
-              <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-3">
-                  <Clock size={14} className="text-teal-400" />
-                  <h4 className="text-[10px] font-black uppercase tracking-widest">Today's Split (Day {currentBatchDay}/30)</h4>
-              </div>
-              {todayVitaminStats.names.length > 0 ? (
-                  <div className="space-y-4">
-                      <div className="grid grid-cols-2 text-[8px] font-black text-white/40 uppercase px-1"><span>Recommend</span><span className="text-right">Actual Used</span></div>
-                      <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                          <div className="flex items-center gap-1 text-[9px] font-black text-teal-300 uppercase mb-2"><Sun size={12}/> AM Period</div>
-                          <div className="flex justify-between items-end">
-                              <span className="text-sm font-black">{(todayVitaminStats.totalTarget / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
-                              <span className="text-sm font-black text-white">{todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) ? (todayVitaminStats.totalTarget / 2).toFixed(2) : todayVitaminStats.actual.toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
-                          </div>
-                      </div>
-                      <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                          <div className="flex items-center gap-1 text-[9px] font-black text-emerald-300 uppercase mb-2"><Moon size={12}/> PM Period</div>
-                          <div className="flex justify-between items-end">
-                              <span className="text-sm font-black">{(todayVitaminStats.totalTarget / 2).toFixed(2)} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
-                              <span className="text-sm font-black text-white">{todayVitaminStats.actual > (todayVitaminStats.totalTarget / 2) ? (todayVitaminStats.actual - (todayVitaminStats.totalTarget / 2)).toFixed(2) : '0.00'} <span className="text-[8px] text-white/40 font-normal ml-1">{todayVitaminStats.unit}</span></span>
-                          </div>
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-white/10">
-                          <div className="flex justify-between text-[9px] font-black text-white/40 uppercase mb-2"><span>Daily Coverage</span><span>{todayVitaminStats.totalTarget > 0 ? ((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100).toFixed(0) : 0}%</span></div>
-                          <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-gradient-to-r from-teal-400 to-emerald-500 h-full transition-all duration-700" style={{ width: `${todayVitaminStats.totalTarget > 0 ? Math.min((todayVitaminStats.actual / todayVitaminStats.totalTarget) * 100, 100) : 0}%` }} />
-                          </div>
-                          <div className="flex justify-between mt-3 text-[10px] font-black">
-                              <span className="text-teal-300 uppercase tracking-tighter truncate max-w-[120px]">{todayVitaminStats.names.join(', ')}</span>
-                              <span className="text-white">Day {currentBatchDay}</span>
-                          </div>
-                      </div>
-                  </div>
-              ) : (
-                  <div className="h-full flex flex-col items-center justify-center opacity-50 text-center space-y-2">
-                      <CheckCircle size={32} /><p className="text-xs font-bold uppercase">No Meds Required Today</p>
-                  </div>
-              )}
-            </div>
-        </div>
-      </div>
+      {/* --- SECTION 4: REMOVED VITAMIN FORECAST AS REQUESTED --- */}
 
       {/* CHARTS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
