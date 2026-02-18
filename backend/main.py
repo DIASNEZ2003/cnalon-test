@@ -166,8 +166,12 @@ class EditPersonnelSchema(BaseModel):
     status: str
     photoUrl: Optional[str] = ""
 
+class VitaminForecastRequestSchema(BaseModel):
+    batchId: str
+    months: Optional[int] = 3  # Number of months to forecast
+
 # ---------------------------------------------------------
-# 4. KNOWLEDGE BASE (FEED & WEIGHT LOGIC)
+# 4. KNOWLEDGE BASE (FEED & VITAMIN LOGIC)
 # ---------------------------------------------------------
 
 FEED_LOGIC_TEMPLATE = [
@@ -180,6 +184,35 @@ FEED_LOGIC_TEMPLATE = [
     (range(21, 26), 145.0, "Finisher"),
     (range(26, 31), 170.0, "Finisher"),
 ]
+
+# San Miguel Foods Inc. Vitamin Supplementation Schedule - COMMENTED OUT to prevent hardcoded data
+# VITAMIN_SCHEDULE = [
+#     (1, "Electrolytes", 10, "g"),
+#     (1, "Biotin/Niacin/Riboflavin", 20, "g"),
+#     (2, "Biotin/Niacin/Riboflavin", 20, "g"),
+#     (3, "Biotin/Niacin/Riboflavin", 20, "g"),
+#     (4, "Biotin/Niacin/Riboflavin", 20, "g"),
+#     (5, "Biotin/Niacin/Riboflavin", 20, "g"),
+#     (6, "Multi V / Multivi Plus", 25, "ml"),
+#     (7, "Multi V / Multivi Plus", 25, "ml"),
+#     (8, "Multi V / Multivi Plus", 25, "ml"),
+#     (9, "Multi V / Multivi Plus", 25, "ml"),
+#     (10, "Multi V / Multivi Plus", 35, "ml"),
+#     (11, "Multi V / Multivi Plus", 35, "ml"),
+#     (12, "Multi V / Multivi Plus", 35, "ml"),
+#     (13, "Multi V / Multivi Plus", 35, "ml"),
+#     (14, "Multi V / Multivi Plus", 35, "ml"),
+#     (15, "Multi V / Multivi Plus", 35, "ml"),
+#     (19, "Vit ADE", 50, "ml"),
+#     (20, "Vit ADE", 50, "ml"),
+#     (21, "Vit ADE", 50, "ml"),
+#     (25, "Vit ADE", 50, "ml"),
+#     (26, "Vit ADE", 50, "ml"),
+#     (27, "Vit ADE", 50, "ml"),
+#     (28, "Multi V / Multivi Plus", 20, "ml"),
+#     (29, "Multi V / Multivi Plus", 20, "ml"),
+#     (30, "Multi V / Multivi Plus", 20, "ml"),
+# ]
 
 MEDICATION_DB = {
     "vetracin": {"adult_dose": 100.0, "unit": "g"}, 
@@ -243,6 +276,70 @@ def generate_weight_forecast(start_weight: float, population: int, feed_forecast
                     "unit": "kg"
                 })
     return weight_data
+
+# REMOVED: generate_vitamin_forecast function that used hardcoded schedule
+# Now vitamin forecasts will only come from actual expense data
+
+def calculate_vitamin_trends(batches: list):
+    """Calculate vitamin usage trends from historical batches"""
+    vitamin_data = {}
+    
+    # Sort batches by date
+    sorted_batches = sorted(batches, key=lambda x: x.get('dateCreated', ''))
+    
+    for batch in sorted_batches:
+        batch_date = batch.get('dateCreated', '')
+        batch_pop = batch.get('startingPopulation', 1000)
+        batch_vitamins = {}
+        
+        # Get vitamin expenses
+        if batch.get('expenses'):
+            for exp_id, exp in batch.get('expenses').items():
+                if exp.get('category') in ['Vitamins', 'Medications']:
+                    vitamin_name = exp.get('itemName', 'Others')
+                    quantity = float(exp.get('quantity', 0)) * float(exp.get('purchaseCount', 1))
+                    
+                    if vitamin_name not in batch_vitamins:
+                        batch_vitamins[vitamin_name] = 0
+                    batch_vitamins[vitamin_name] += quantity
+        
+        # Calculate per-bird rates
+        for vit_name, amount in batch_vitamins.items():
+            if vit_name not in vitamin_data:
+                vitamin_data[vit_name] = []
+            
+            rate_per_bird = amount / batch_pop
+            vitamin_data[vit_name].append({
+                "date": batch_date,
+                "population": batch_pop,
+                "amount": amount,
+                "rate_per_bird": rate_per_bird
+            })
+    
+    # Calculate trends
+    trends = {}
+    for vit_name, data in vitamin_data.items():
+        if len(data) >= 2:
+            # Simple linear trend
+            first_rate = data[0]["rate_per_bird"]
+            last_rate = data[-1]["rate_per_bird"]
+            avg_rate = sum(d["rate_per_bird"] for d in data) / len(data)
+            
+            # Calculate trend percentage
+            if first_rate > 0:
+                trend_pct = ((last_rate - first_rate) / first_rate) * 100
+            else:
+                trend_pct = 0
+            
+            trends[vit_name] = {
+                "historical": data,
+                "avg_rate_per_bird": avg_rate,
+                "trend_percentage": round(trend_pct, 1),
+                "trend_direction": "up" if trend_pct > 5 else "down" if trend_pct < -5 else "stable",
+                "confidence": "high" if len(data) >= 3 else "medium" if len(data) >= 2 else "low"
+            }
+    
+    return trends
 
 # --- HELPER 1: DEACTIVATE OTHERS ---
 def deactivate_other_active_batches(current_batch_id=None):
@@ -367,7 +464,7 @@ async def admin_delete_user(target_uid: str, authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- UPDATED: CREATE BATCH (New Logic) ---
+# --- UPDATED: CREATE BATCH (without hardcoded vitamin forecast) ---
 @app.post("/create-batch")
 async def create_batch(data: BatchSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -387,16 +484,16 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
                     break
         
         # 2. AUTO ASSIGN STATUS
-        # If active batch exists -> New batch = INACTIVE (Wait in queue)
-        # If no active batch -> New batch = ACTIVE (Start immediately)
         final_status = "inactive" if has_active_batch else "active"
 
         ref_batch = db.reference('global_batches')
         new_batch_ref = ref_batch.push()
         
-        forecast_list = generate_forecast_data(data.startingPopulation)
+        # Generate feed forecast only (no vitamin forecast)
+        feed_forecast = generate_forecast_data(data.startingPopulation)
         
-        new_batch_ref.set({
+        # Create batch WITHOUT vitamin forecast
+        batch_data = {
             "batchName": data.batchName,
             "dateCreated": data.dateCreated,
             "expectedCompleteDate": data.expectedCompleteDate,
@@ -404,9 +501,12 @@ async def create_batch(data: BatchSchema, authorization: str = Header(None)):
             "vitaminBudget": data.vitaminBudget,
             "penCount": data.penCount,
             "averageChickWeight": data.averageChickWeight,
-            "status": final_status, # AUTO ASSIGNED
-            "feedForecast": forecast_list
-        })
+            "status": final_status,
+            "feedForecast": feed_forecast
+            # No vitaminForecast field
+        }
+        
+        new_batch_ref.set(batch_data)
         return {"status": "success", "message": f"Batch created as {final_status}"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -428,7 +528,7 @@ async def get_batches(authorization: str = Header(None)):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-# --- UPDATED: UPDATE BATCH (Activation Logic) ---
+# --- UPDATED: UPDATE BATCH (without vitamin forecast) ---
 @app.put("/update-batch/{batch_id}")
 async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -453,8 +553,11 @@ async def update_batch(batch_id: str, data: BatchUpdateSchema, authorization: st
 
         if data.startingPopulation is not None:
             updates["startingPopulation"] = data.startingPopulation
-            new_forecast = generate_forecast_data(data.startingPopulation)
-            updates["feedForecast"] = new_forecast
+            # Regenerate feed forecast only
+            new_feed_forecast = generate_forecast_data(data.startingPopulation)
+            updates["feedForecast"] = new_feed_forecast
+            # Remove any existing vitamin forecast
+            updates["vitaminForecast"] = None
         
         ref_batch.update(updates)
 
@@ -473,9 +576,16 @@ async def update_batch_settings(batch_id: str, data: BatchUpdateSchema, authoriz
         auth.verify_id_token(token)
         
         batch_ref = db.reference(f'global_batches/{batch_id}')
+        
         updates = {}
         if data.startingPopulation is not None:
             updates["startingPopulation"] = data.startingPopulation
+            # Regenerate feed forecast only
+            new_feed_forecast = generate_forecast_data(data.startingPopulation)
+            updates["feedForecast"] = new_feed_forecast
+            # Remove any existing vitamin forecast
+            updates["vitaminForecast"] = None
+            
         if data.penCount is not None:
             updates["penCount"] = data.penCount
         if data.averageChickWeight is not None:
@@ -661,13 +771,196 @@ async def get_sales(batch_id: str, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------
-# 9. FORECASTING & INVENTORY (FORCE UPDATE LOGIC)
+# 9. FORECASTING & INVENTORY
 # ---------------------------------------------------------
+
+@app.get("/get-vitamin-forecast/{batch_id}")
+async def get_vitamin_forecast(batch_id: str, authorization: str = Header(None)):
+    """Get vitamin forecast for a specific batch based on historical data only"""
+    try:
+        token = authorization.split("Bearer ")[1]
+        auth.verify_id_token(token)
+        
+        batch_ref = db.reference(f'global_batches/{batch_id}')
+        batch_data = batch_ref.get()
+        
+        if not batch_data:
+            raise HTTPException(status_code=404, detail="Batch not found")
+        
+        # Get historical vitamin usage from completed batches for trends
+        all_batches_ref = db.reference('global_batches')
+        all_batches = all_batches_ref.get()
+        
+        completed_batches = []
+        if all_batches:
+            for bid, bdata in all_batches.items():
+                if bdata.get('status') == 'completed':
+                    completed_batches.append(bdata)
+        
+        # Calculate trends (returns empty if no data)
+        trends = calculate_vitamin_trends(completed_batches)
+        
+        # Return empty forecast if no historical data
+        if not trends:
+            return {
+                "batchName": batch_data.get('batchName'),
+                "population": batch_data.get('startingPopulation', 1000),
+                "forecast": [],
+                "trends": {},
+                "message": "No historical vitamin data available",
+                "generated": get_ph_time()
+            }
+        
+        return {
+            "batchName": batch_data.get('batchName'),
+            "population": batch_data.get('startingPopulation', 1000),
+            "forecast": [],  # No forecast generation, only trends
+            "trends": trends,
+            "generated": get_ph_time()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/get-vitamin-monthly-forecast")
+async def get_vitamin_monthly_forecast(months: int = 3, authorization: str = Header(None)):
+    """Get monthly vitamin consumption forecast based on historical trends"""
+    try:
+        token = authorization.split("Bearer ")[1]
+        auth.verify_id_token(token)
+        
+        # Get all batches
+        all_batches_ref = db.reference('global_batches')
+        all_batches = all_batches_ref.get()
+        
+        if not all_batches:
+            return {"forecast": [], "message": "No batch data available"}
+        
+        # Group batches by month
+        monthly_usage = {}
+        
+        for bid, bdata in all_batches.items():
+            # Only consider completed or active batches with expenses
+            if bdata.get('status') in ['completed', 'active'] and bdata.get('expenses'):
+                date_created = bdata.get('dateCreated', '')
+                if date_created:
+                    # Extract year-month
+                    try:
+                        month_key = date_created[:7]  # YYYY-MM
+                        if month_key not in monthly_usage:
+                            monthly_usage[month_key] = {
+                                "month": month_key,
+                                "vitamins": {},
+                                "total_batches": 0
+                            }
+                        
+                        monthly_usage[month_key]["total_batches"] += 1
+                        
+                        # Aggregate vitamin usage
+                        for exp_id, exp in bdata.get('expenses').items():
+                            if exp.get('category') in ['Vitamins', 'Medications']:
+                                vit_name = exp.get('itemName', 'Others')
+                                quantity = float(exp.get('quantity', 0)) * float(exp.get('purchaseCount', 1))
+                                
+                                if vit_name not in monthly_usage[month_key]["vitamins"]:
+                                    monthly_usage[month_key]["vitamins"][vit_name] = 0
+                                
+                                monthly_usage[month_key]["vitamins"][vit_name] += quantity
+                    except:
+                        continue
+        
+        # If no monthly data, return empty
+        if not monthly_usage:
+            return {
+                "historical": [],
+                "forecast": [],
+                "vitamin_breakdown": {},
+                "trend": {
+                    "direction": "stable",
+                    "rate": 0,
+                    "average_monthly": 0
+                },
+                "message": "No vitamin expense data available"
+            }
+        
+        # Sort months chronologically
+        sorted_months = sorted(monthly_usage.keys())
+        
+        # Prepare time series data
+        time_series = []
+        vitamin_totals = {}
+        
+        for month in sorted_months:
+            month_data = monthly_usage[month]
+            total_month = sum(month_data["vitamins"].values())
+            
+            time_series.append({
+                "month": month,
+                "total": round(total_month, 2),
+                "batches": month_data["total_batches"]
+            })
+            
+            # Track individual vitamins
+            for vit_name, amount in month_data["vitamins"].items():
+                if vit_name not in vitamin_totals:
+                    vitamin_totals[vit_name] = []
+                vitamin_totals[vit_name].append({
+                    "month": month,
+                    "amount": round(amount, 2)
+                })
+        
+        # Generate forecast for next months only if we have enough data
+        forecast = []
+        growth_rate = 0
+        
+        if len(time_series) >= 2:
+            # Calculate average growth rate
+            first_total = time_series[0]["total"]
+            last_total = time_series[-1]["total"]
+            
+            if first_total > 0:
+                growth_rate = (last_total - first_total) / len(time_series)
+            
+            # Only generate forecast if there's meaningful data
+            if last_total > 0:
+                last_month = time_series[-1]["month"]
+                last_year = int(last_month[:4])
+                last_month_num = int(last_month[5:7])
+                
+                for i in range(1, months + 1):
+                    next_month_num = last_month_num + i
+                    next_year = last_year
+                    if next_month_num > 12:
+                        next_month_num -= 12
+                        next_year += 1
+                    
+                    next_month = f"{next_year}-{str(next_month_num).zfill(2)}"
+                    forecast_total = last_total + (growth_rate * i)
+                    
+                    forecast.append({
+                        "month": next_month,
+                        "forecast": round(max(forecast_total, 0), 2),
+                        "confidence": "high" if len(time_series) >= 3 else "medium"
+                    })
+        
+        return {
+            "historical": time_series,
+            "forecast": forecast,
+            "vitamin_breakdown": vitamin_totals,
+            "trend": {
+                "direction": "up" if growth_rate > 0 else "down" if growth_rate < 0 else "stable",
+                "rate": round(abs(growth_rate), 2),
+                "average_monthly": round(sum(t["total"] for t in time_series) / len(time_series), 2) if time_series else 0
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/get-inventory-forecast/{batch_id}")
 async def get_inventory_forecast(batch_id: str, authorization: str = Header(None)):
-    # VITAMIN FORECAST LOGIC REMOVED AS REQUESTED
-    return []
+    # Return vitamin forecast instead of empty list
+    return await get_vitamin_forecast(batch_id, authorization)
 
 @app.get("/get-feed-forecast/{batch_id}")
 async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
@@ -683,10 +976,9 @@ async def get_feed_forecast(batch_id: str, authorization: str = Header(None)):
         start_weight = batch_data.get('averageChickWeight', 50.0) 
         
         # 2. FORCE RECALCULATE (Ignore old saved data)
-        # Using 30.0 g/bird for day 1 -> (30 * 1000) / 1000 = 30.0 kg
         new_feed_forecast = generate_forecast_data(population)
         
-        # 3. Calculate Weight Forecast - BASED DIRECTLY ON FEED CONSUMPTION + 3 DAY GAP
+        # 3. Calculate Weight Forecast
         new_weight_forecast = generate_weight_forecast(start_weight, population, new_feed_forecast)
         
         # 4. OVERWRITE DATABASE WITH CORRECT DATA
