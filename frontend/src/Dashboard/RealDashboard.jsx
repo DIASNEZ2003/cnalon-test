@@ -7,9 +7,9 @@ import {
   Clock, Sun, Moon, BarChart3, ArrowUpRight, ArrowDownRight,
   GitCompare, X, Eye, Pill, HeartPulse, CheckCircle,
   Package, Home, Settings, Save, ClipboardList, Utensils, Truck,
-  Bell, AlertTriangle, ShoppingCart, ArrowRight, Info,
+  Bell, AlertTriangle, Plus, ArrowRight, Info,
   ChevronRight, Calendar, DollarSign, Target, Package as Sack,
-  Droplets, Beaker, Syringe, Tablet, Sun as SunIcon
+  Droplets, Beaker, Syringe, Tablet, Sun as SunIcon, Calculator
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
@@ -43,8 +43,27 @@ const calculateDaysStrict = (startDateStr) => {
     return Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
 };
 
+// Helper function to save to localStorage
+const saveToLocalStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
+
+// Helper function to load from localStorage
+const loadFromLocalStorage = (key, defaultValue) => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved !== null ? JSON.parse(saved) : defaultValue;
+  } catch (error) {
+    console.error('Error loading from localStorage:', error);
+    return defaultValue;
+  }
+};
+
 const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barColor, prevValue, isCurrency = false, isInverse = false, graphData, graphKey, xKey = "day", isComparison = false }) => {
-  // Only show formatted value if there's actual data
   const hasValue = value !== null && value !== undefined && value !== 0;
   const hasPrevValue = prevValue !== null && prevValue !== undefined && prevValue !== 0;
   
@@ -91,34 +110,34 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
   };
 
   return (
-    <div className="relative group bg-white rounded-2xl shadow-sm border border-gray-100 h-36 transition-all duration-300 overflow-hidden">
-      <div className="absolute inset-0 p-5 flex flex-col justify-between z-10 bg-white group-hover:opacity-0 transition-opacity duration-300">
+    <div className="relative group bg-white rounded-xl shadow-sm border border-gray-100 h-28 transition-all duration-300 overflow-hidden">
+      <div className="absolute inset-0 p-4 flex flex-col justify-between z-10 bg-white group-hover:opacity-0 transition-opacity duration-300">
         <div className="flex justify-between items-start">
-          <span className={`p-2.5 rounded-xl ${bgClass} ${colorClass}`}>
-            <Icon size={20}/>
+          <span className={`p-2 rounded-lg ${bgClass} ${colorClass}`}>
+            <Icon size={16}/>
           </span>
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
         </div>
         <div>
-          <h3 className={`text-2xl font-black ${colorClass.replace('text-', 'text-opacity-90 text-')}`}>
-            {hasValue ? formattedValue : '0'} <span className="text-xs font-normal text-gray-400">{unit}</span>
+          <h3 className={`text-xl font-black ${colorClass.replace('text-', 'text-opacity-90 text-')}`}>
+            {hasValue ? formattedValue : '0'} <span className="text-[10px] font-normal text-gray-400">{unit}</span>
           </h3>
-          <div className="flex items-center gap-1 mt-1 text-xs font-bold opacity-60">
+          <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold opacity-60">
             {hasPrevValue ? (
               <>
-                {isBetter ? <ArrowUpRight size={14} className="text-green-600"/> : <ArrowDownRight size={14} className="text-red-600"/>}
+                {isBetter ? <ArrowUpRight size={12} className="text-green-600"/> : <ArrowDownRight size={12} className="text-red-600"/>}
                 <span className={isBetter ? 'text-green-600' : 'text-red-600'}>vs Last Batch</span>
               </>
             ) : <span className="text-gray-400">No previous data</span>}
           </div>
         </div>
-        <div className={`absolute top-5 right-5 opacity-20 ${colorClass}`}><Eye size={16} /></div>
+        <div className={`absolute top-4 right-4 opacity-20 ${colorClass}`}><Eye size={14} /></div>
       </div>
 
       <div className="absolute inset-0 z-20 bg-white p-2 flex flex-col opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <div className="flex justify-between items-center mb-1 pb-1 border-b border-gray-50 px-2 pt-1">
-            <p className="text-[10px] font-black text-gray-600 uppercase">{title} Trend</p>
-            <span className={`text-[9px] text-white px-1.5 py-0.5 rounded font-bold`} style={{ backgroundColor: barColor }}>
+            <p className="text-[9px] font-black text-gray-600 uppercase">{title} Trend</p>
+            <span className={`text-[8px] text-white px-1.5 py-0.5 rounded font-bold`} style={{ backgroundColor: barColor }}>
                 {isComparison ? 'VS LAST' : (title === 'Avg Weight' ? 'WEEKLY' : '30 DAYS')}
             </span>
           </div>
@@ -127,10 +146,10 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
               {isComparison ? (
                   <BarChart data={compareData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 700 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 700 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8' }} />
                     <Tooltip content={<CustomCompareTooltip />} cursor={{ fill: '#f8fafc', opacity: 0.5 }} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={25}>
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={20}>
                       {compareData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                     </Bar>
                   </BarChart>
@@ -144,7 +163,7 @@ const MetricCard = ({ title, value, unit, icon: Icon, colorClass, bgClass, barCo
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey={xKey} hide />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} domain={['auto', 'auto']} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8' }} domain={['auto', 'auto']} />
                     <Tooltip content={<CustomGraphTooltip />} cursor={{ stroke: barColor, strokeWidth: 1 }} />
                     <Area type="monotone" dataKey={graphKey} stroke={barColor} strokeWidth={2} fill={`url(#grad-${graphKey})`} activeDot={{ r: 3 }} />
                   </AreaChart>
@@ -174,17 +193,17 @@ const PenMetricCard = ({ title, count, capacity, chartData }) => {
     };
 
     return (
-        <div className="relative group bg-white rounded-2xl shadow-sm border border-gray-100 h-36 transition-all duration-300 overflow-hidden">
-            <div className="absolute inset-0 p-5 flex flex-col justify-between z-10 bg-white group-hover:opacity-0 transition-opacity duration-300 text-center">
+        <div className="relative group bg-white rounded-xl shadow-sm border border-gray-100 h-28 transition-all duration-300 overflow-hidden">
+            <div className="absolute inset-0 p-3 flex flex-col justify-between z-10 bg-white group-hover:opacity-0 transition-opacity duration-300 text-center">
                 <div className="flex flex-col items-center">
-                    <div className="p-2 bg-indigo-50 rounded-full mb-2"><Home size={20} className="text-indigo-600" /></div>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
+                    <div className="p-1.5 bg-indigo-50 rounded-full mb-1"><Home size={16} className="text-indigo-600" /></div>
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
                 </div>
                 <div>
-                    <h3 className="text-2xl font-black text-indigo-900">
-                        {count > 0 ? count.toLocaleString() : '0'} <span className="text-xs font-normal text-gray-400">heads</span>
+                    <h3 className="text-xl font-black text-indigo-900">
+                        {count > 0 ? count.toLocaleString() : '0'} <span className="text-[10px] font-normal text-gray-400">heads</span>
                     </h3>
-                    <div className="w-full bg-gray-100 h-1 mt-3 rounded-full overflow-hidden">
+                    <div className="w-full bg-gray-100 h-1 mt-2 rounded-full overflow-hidden">
                         <div className="bg-indigo-500 h-full" style={{ width: `${count > 0 ? Math.min((count / capacity) * 100, 100) : 0}%` }}></div>
                     </div>
                 </div>
@@ -192,17 +211,17 @@ const PenMetricCard = ({ title, count, capacity, chartData }) => {
 
             <div className="absolute inset-0 z-20 bg-white p-2 flex flex-col opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                  <div className="flex justify-between items-center mb-1 pb-1 border-b border-gray-50 px-2 pt-1">
-                    <p className="text-[10px] font-black text-gray-600 uppercase">{title} Stats</p>
-                    <span className="text-[9px] text-white px-1.5 py-0.5 rounded font-bold bg-indigo-500">ESTIMATED</span>
+                    <p className="text-[9px] font-black text-gray-600 uppercase">{title} Stats</p>
+                    <span className="text-[8px] text-white px-1 py-0.5 rounded font-bold bg-indigo-500">ESTIMATED</span>
                 </div>
                 <div className="flex-1 w-full h-full min-h-0">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData || []} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 700 }} />
-                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8', fontWeight: 700 }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#94a3b8' }} />
                             <Tooltip content={<CustomPenTooltip />} cursor={{ fill: '#f8fafc', opacity: 0.5 }} />
-                            <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={20}>
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={16}>
                                 {chartData?.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                             </Bar>
                         </BarChart>
@@ -225,7 +244,17 @@ const RealDashboard = ({ onNavigate }) => {
   const [loadingForecast, setLoadingForecast] = useState(false);
   const [showFeedTips, setShowFeedTips] = useState(false);
   const [showVitaminTips, setShowVitaminTips] = useState(false);
-  const [chartHoverData, setChartHoverData] = useState(null);
+  
+  // State for History Comparison Chart
+  const [historyMetric, setHistoryMetric] = useState('income');
+  
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState('financials');
+  
+  // Interactive Forecasting - Load from localStorage with default 1000
+  const [nextBatchPop, setNextBatchPop] = useState(() => 
+    loadFromLocalStorage('nextBatchPopulation', 1000)
+  );
 
   const [settings, setSettings] = useState({ population: 0, pens: 5, weight: 50 });
   const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -253,6 +282,10 @@ const RealDashboard = ({ onNavigate }) => {
     forecast: [],
     trend: { direction: 'stable', rate: 0, average_monthly: 0 }
   });
+
+  useEffect(() => {
+    saveToLocalStorage('nextBatchPopulation', nextBatchPop);
+  }, [nextBatchPop]);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -290,12 +323,10 @@ const RealDashboard = ({ onNavigate }) => {
           let boosterTotal = 0, starterTotal = 0, finisherTotal = 0;
           let vitaminTotals = {};
           
-          // Calculate expenses and feed by type - ONLY from current batch
           if (firstActive.expenses) {
             Object.values(firstActive.expenses).forEach(exp => {
               totalExp += Number(exp.amount || 0);
               
-              // Track feed by type
               if (exp.category === 'Feeds' && exp.feedType) {
                 const quantity = Number(exp.quantity || 0) * Number(exp.purchaseCount || 1);
                 if (exp.feedType === 'Booster') {
@@ -308,7 +339,6 @@ const RealDashboard = ({ onNavigate }) => {
                 feedKilos += quantity;
               }
               
-              // Track vitamins by type
               if (exp.category === 'Vitamins' || exp.category === 'Medications') {
                 const vitaminName = exp.itemName || 'Others';
                 const quantity = Number(exp.quantity || 0) * Number(exp.purchaseCount || 1);
@@ -318,21 +348,18 @@ const RealDashboard = ({ onNavigate }) => {
             });
           }
           
-          // Only add feed logs if they exist
           if (firstActive.feed_logs) {
             Object.values(firstActive.feed_logs).forEach(log => {
               feedKilos += (Number(log.am || 0) + Number(log.pm || 0));
             });
           }
           
-          // Only add vitamin logs if they exist
           if (firstActive.daily_vitamin_logs) {
             Object.values(firstActive.daily_vitamin_logs).forEach(log => {
               vitaminGrams += (Number(log.am_amount || 0) + Number(log.pm_amount || 0));
             });
           }
           
-          // Only add sales if they exist
           if (firstActive.sales) {
             Object.values(firstActive.sales).forEach(sale => { 
               totalSales += Number(sale.totalAmount || 0); 
@@ -340,14 +367,12 @@ const RealDashboard = ({ onNavigate }) => {
             });
           }
           
-          // Only add mortality if it exists
           if (firstActive.mortality_logs) {
             Object.values(firstActive.mortality_logs).forEach(log => {
               totalMortality += (Number(log.am || 0) + Number(log.pm || 0));
             });
           }
           
-          // Only get weight if it exists
           if (firstActive.weight_logs) {
             const weights = Object.values(firstActive.weight_logs).sort((a,b) => b.day - a.day);
             if (weights.length > 0) currentWeight = Number(weights[0].averageWeight || 0); 
@@ -369,11 +394,7 @@ const RealDashboard = ({ onNavigate }) => {
             vitaminByType: vitaminTotals
           });
 
-          // Calculate vitamin forecast from historical data ONLY if there are completed batches
-          const completedBatches = batchList.filter(b => b.status === 'completed' && b.id !== firstActive.id);
-          if (completedBatches.length > 0) {
-            calculateVitaminForecast(firstActive, batchList, vitaminTotals);
-          }
+          calculateVitaminForecast(firstActive, batchList, vitaminTotals);
         }
       }
       setLoading(false); 
@@ -382,230 +403,245 @@ const RealDashboard = ({ onNavigate }) => {
   }, [currentUser]);
 
   const calculateVitaminForecast = (currentBatch, allBatches, currentVitaminTotals) => {
-    // Get completed batches for historical data
     const completedBatches = allBatches
       .filter(b => b.status === 'completed' && b.id !== currentBatch.id)
       .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated))
-      .slice(0, 3);
+      .slice(0, 5); 
     
-    if (completedBatches.length === 0) {
-      setVitaminForecast({});
-      setMonthlyVitaminTrend({
-        historical: [],
-        forecast: [],
-        trend: { direction: 'stable', rate: 0, average_monthly: 0 }
-      });
-      return;
-    }
+    const vitaminRates = {}; 
+    let hasData = false;
 
-    // Calculate per-bird vitamin usage from completed batches
-    const vitaminRates = {};
-    const vitaminMonthlyData = {};
-    let hasAnyVitaminData = false;
-    
-    completedBatches.forEach((batch) => {
-      const batchPop = batch.startingPopulation || 1000;
-      const batchDate = batch.dateCreated || '';
-      const monthKey = batchDate.substring(0, 7);
-      
-      if (!vitaminMonthlyData[monthKey]) {
-        vitaminMonthlyData[monthKey] = { total: 0, batches: 0 };
-      }
-      vitaminMonthlyData[monthKey].batches += 1;
-      
-      // Get vitamin expenses for this batch
-      if (batch.expenses) {
-        Object.values(batch.expenses).forEach(exp => {
-          if (exp.category === 'Vitamins' || exp.category === 'Medications') {
-            hasAnyVitaminData = true;
-            const vitaminName = exp.itemName || 'Others';
-            const quantity = Number(exp.quantity || 0) * Number(exp.purchaseCount || 1);
-            
-            if (!vitaminRates[vitaminName]) {
-              vitaminRates[vitaminName] = [];
-            }
-            
-            const ratePerBird = quantity / batchPop;
-            vitaminRates[vitaminName].push({
-              batch: batch.batchName,
-              population: batchPop,
-              amount: quantity,
-              rate: ratePerBird,
-              date: batchDate
-            });
-            
-            vitaminMonthlyData[monthKey].total += quantity;
-          }
-        });
-      }
-    });
-
-    // If no vitamin data found, don't show forecast
-    if (!hasAnyVitaminData) {
-      setVitaminForecast({});
-      setMonthlyVitaminTrend({
-        historical: [],
-        forecast: [],
-        trend: { direction: 'stable', rate: 0, average_monthly: 0 }
-      });
-      return;
-    }
-
-    // Calculate required amounts for current batch based on historical rates
-    const currentPop = currentBatch.startingPopulation || 1000;
-    const newForecast = {};
-    
-    // Map vitamin names to categories
     const vitaminCategories = {
-      'Electrolytes': ['Electrolyte', 'Electrolytes', 'elyte'],
-      'Biotin/Niacin/Riboflavin': ['Biotin', 'Niacin', 'Riboflavin', 'B-complex'],
-      'Multi V / Multivi Plus': ['Multi', 'Multivi', 'Multivitamin', 'MV'],
-      'Vit ADE': ['ADE', 'Vit ADE', 'Vitamin ADE']
+      'Electrolytes': ['Electrolyte', 'Electrolytes', 'elyte', 'lyte'],
+      'Biotin/Niacin/Riboflavin': ['Biotin', 'Niacin', 'Riboflavin', 'B-complex', 'B complex', 'Vitamin B'],
+      'Multi V / Multivi Plus': ['Multi', 'Multivi', 'Multivitamin', 'MV', 'Multi V', 'Vitamins', 'Multivit'],
+      'Vit ADE': ['ADE', 'Vit ADE', 'Vitamin ADE', 'ADE Vit', 'A D E'],
+      'Others': [] 
     };
-    
-    // Calculate for each category
-    Object.keys(vitaminCategories).forEach(category => {
-      const keywords = vitaminCategories[category];
-      let totalRate = 0;
-      let count = 0;
-      
-      // Collect rates from all matching vitamins
-      Object.keys(vitaminRates).forEach(vitName => {
-        const matches = keywords.some(keyword => 
-          vitName.toLowerCase().includes(keyword.toLowerCase())
-        );
+
+    const newForecast = {
+      'Electrolytes': null,
+      'Biotin/Niacin/Riboflavin': null,
+      'Multi V / Multivi Plus': null,
+      'Vit ADE': null,
+      'Others': null
+    };
+
+    const currentPop = currentBatch.startingPopulation || 1000;
+
+    if (completedBatches.length === 0) {
+      Object.keys(vitaminCategories).forEach(category => {
+        const keywords = vitaminCategories[category];
         
-        if (matches) {
-          vitaminRates[vitName].forEach(data => {
-            totalRate += data.rate;
-            count++;
-          });
-        }
-      });
-      
-      // Only create forecast if there's historical data for this category
-      if (count > 0) {
-        // Calculate average rate per bird
-        const avgRate = totalRate / count;
-        
-        // Required amount for current batch
-        const required = avgRate * currentPop;
-        
-        // Used amount from current batch
         let used = 0;
         Object.keys(currentVitaminTotals).forEach(vitName => {
           const matches = keywords.some(keyword => 
             vitName.toLowerCase().includes(keyword.toLowerCase())
           );
-          if (matches) {
-            used += currentVitaminTotals[vitName];
-          }
+          if (matches) used += currentVitaminTotals[vitName];
         });
         
-        const percentage = required > 0 ? (used / required) * 100 : 0;
-        const remaining = required - used;
+        const defaultRate = category === 'Electrolytes' ? 0.05 : 
+                           category === 'Biotin/Niacin/Riboflavin' ? 0.03 :
+                           category === 'Multi V / Multivi Plus' ? 0.1 :
+                           category === 'Vit ADE' ? 0.07 : 0.04;
         
-        // Determine unit based on category or default
+        const required = defaultRate * currentPop;
+        const remaining = required - used;
+        const percentage = required > 0 ? (used / required) * 100 : 0;
         const unit = category.includes('Multi') || category.includes('ADE') ? 'ml' : 'g';
         
         let status = 'good';
         let message = '';
         
-        if (remaining < 0) {
-          status = 'excess';
-          message = `Excess of ${Math.abs(remaining).toFixed(1)} ${unit}`;
-        } else if (remaining === 0) {
-          status = 'complete';
-          message = 'Exactly on target';
-        } else if (percentage < 30) {
-          status = 'critical';
-          message = `Need ${remaining.toFixed(1)} ${unit} urgently`;
-        } else if (percentage < 60) {
-          status = 'warning';
-          message = `Prepare ${remaining.toFixed(1)} ${unit} soon`;
-        } else {
-          status = 'good';
-          message = `Sufficient (${remaining.toFixed(1)} ${unit} left)`;
-        }
-        
-        // Calculate trend
-        let trend = 0;
-        let nextMonth = required;
-        
-        const months = Object.keys(vitaminMonthlyData).sort();
-        if (months.length >= 2) {
-          const firstMonth = vitaminMonthlyData[months[0]].total;
-          const lastMonth = vitaminMonthlyData[months[months.length - 1]].total;
-          if (firstMonth > 0) {
-            trend = ((lastMonth - firstMonth) / firstMonth) * 100;
+        if (remaining > 0) {
+          if (percentage < 30) {
+            status = 'critical';
+            message = ` CRITICAL: Add ${remaining.toFixed(1)}${unit} immediately`;
+          } else if (percentage < 60) {
+            status = 'warning';
+            message = `Warning: Need ${remaining.toFixed(1)}${unit} soon`;
+          } else if (percentage < 90) {
+            status = 'good';
+            message = `Stock OK: Need ${remaining.toFixed(1)}${unit} later`;
+          } else {
+            status = 'good';
+            message = `Almost complete: Need ${remaining.toFixed(1)}${unit}`;
           }
-          
-          const avgMonthly = Object.values(vitaminMonthlyData).reduce((sum, d) => sum + d.total, 0) / months.length;
-          const growthPerMonth = (lastMonth - firstMonth) / months.length;
-          nextMonth = Math.max(0, lastMonth + growthPerMonth);
+        } else {
+          status = 'excess';
+          message = ` Sufficient (+${Math.abs(remaining).toFixed(1)}${unit} surplus)`;
         }
         
         newForecast[category] = {
           used,
           required,
-          remaining,
-          percentage,
+          remaining: Math.max(0, remaining),
+          percentage: Math.min(percentage, 100),
           status,
           message,
           unit,
-          trend: trend || 0,
-          nextMonth: nextMonth || required
+          dosagePerBird: defaultRate
         };
+      });
+      
+      setVitaminForecast(newForecast);
+      return;
+    }
+
+    completedBatches.forEach((batch) => {
+      const batchPop = batch.startingPopulation || 1;
+      if (batch.expenses) {
+        Object.values(batch.expenses).forEach(exp => {
+          if (exp.category === 'Vitamins' || exp.category === 'Medications') {
+            hasData = true;
+            const vitaminName = exp.itemName || 'Others';
+            const quantity = Number(exp.quantity || 0) * Number(exp.purchaseCount || 1);
+            
+            const ratePerBird = quantity / batchPop;
+            
+            if (!vitaminRates[vitaminName]) vitaminRates[vitaminName] = [];
+            vitaminRates[vitaminName].push(ratePerBird);
+          }
+        });
+      }
+    });
+
+    Object.keys(vitaminCategories).forEach(category => {
+      const keywords = vitaminCategories[category];
+      let totalRate = 0;
+      let count = 0;
+      let used = 0;
+      
+      Object.keys(currentVitaminTotals).forEach(vitName => {
+        const matches = keywords.some(keyword => 
+          vitName.toLowerCase().includes(keyword.toLowerCase())
+        );
+        if (matches) used += currentVitaminTotals[vitName];
+      });
+      
+      if (hasData) {
+        Object.keys(vitaminRates).forEach(vitName => {
+          const matches = keywords.some(keyword => 
+            vitName.toLowerCase().includes(keyword.toLowerCase())
+          );
+          if (matches) {
+            vitaminRates[vitName].forEach(rate => {
+              totalRate += rate;
+              count++;
+            });
+          }
+        });
+      }
+      
+      if (count > 0) {
+        const avgRate = totalRate / count;
+        const required = avgRate * currentPop;
+        const remaining = required - used;
+        const percentage = required > 0 ? (used / required) * 100 : 0;
+        const unit = category.includes('Multi') || category.includes('ADE') ? 'ml' : 'g';
+        
+        let status = 'good';
+        let message = '';
+        
+        if (remaining > 0) {
+          if (percentage < 30) {
+            status = 'critical';
+            message = ` CRITICAL: Add ${remaining.toFixed(1)}${unit} immediately`;
+          } else if (percentage < 60) {
+            status = 'warning';
+            message = ` Warning: Need ${remaining.toFixed(1)}${unit} soon`;
+          } else if (percentage < 90) {
+            status = 'good';
+            message = ` Stock OK: Need ${remaining.toFixed(1)}${unit} later`;
+          } else {
+            status = 'good';
+            message = ` Almost complete: Need ${remaining.toFixed(1)}${unit}`;
+          }
+        } else {
+          status = 'excess';
+          message = ` Sufficient (+${Math.abs(remaining).toFixed(1)}${unit} surplus)`;
+        }
+        
+        newForecast[category] = {
+          used,
+          required,
+          remaining: Math.max(0, remaining),
+          percentage: Math.min(percentage, 100),
+          status,
+          message,
+          unit,
+          dosagePerBird: avgRate
+        };
+      } else if (category === 'Others') {
+        let othersUsed = 0;
+        const unmatchedVitamins = [];
+        
+        Object.keys(currentVitaminTotals).forEach(vitName => {
+          let matched = false;
+          Object.keys(vitaminCategories).forEach(cat => {
+            if (cat !== 'Others') {
+              const matches = vitaminCategories[cat].some(keyword => 
+                vitName.toLowerCase().includes(keyword.toLowerCase())
+              );
+              if (matches) matched = true;
+            }
+          });
+          if (!matched) {
+            othersUsed += currentVitaminTotals[vitName];
+            unmatchedVitamins.push(vitName);
+          }
+        });
+        
+        if (othersUsed > 0 || unmatchedVitamins.length > 0) {
+          newForecast[category] = {
+            used: othersUsed,
+            required: othersUsed * 1.2, 
+            remaining: othersUsed * 0.2,
+            percentage: 83,
+            status: 'good',
+            message: ` ${unmatchedVitamins.length} other vitamins in stock`,
+            unit: 'units',
+            dosagePerBird: 0.05
+          };
+        }
       }
     });
     
     setVitaminForecast(newForecast);
-    
-    // Set monthly trend data only if there's data
+
+    const vitaminMonthlyData = {};
+    completedBatches.forEach(batch => {
+        const date = batch.dateCreated || '';
+        const month = date.substring(0, 7);
+        let totalVol = 0;
+        if(batch.expenses) {
+            Object.values(batch.expenses).forEach(exp => {
+                if(exp.category === 'Vitamins' || exp.category === 'Medications') {
+                    totalVol += (Number(exp.quantity||0) * Number(exp.purchaseCount||1));
+                }
+            });
+        }
+        if(!vitaminMonthlyData[month]) vitaminMonthlyData[month] = { total: 0, batches: 0 };
+        vitaminMonthlyData[month].total += totalVol;
+        vitaminMonthlyData[month].batches += 1;
+    });
+
     const months = Object.keys(vitaminMonthlyData).sort();
     if (months.length > 0) {
-      const historical = months.map(m => ({
-        month: m,
-        total: vitaminMonthlyData[m].total,
-        batches: vitaminMonthlyData[m].batches
-      }));
-      
-      // Generate forecast
-      const forecast = [];
-      if (months.length >= 2) {
-        const lastMonth = months[months.length - 1];
-        const lastYear = parseInt(lastMonth.substring(0, 4));
-        const lastMonthNum = parseInt(lastMonth.substring(5, 7));
-        const lastTotal = vitaminMonthlyData[lastMonth].total;
-        const firstTotal = vitaminMonthlyData[months[0]].total;
-        const growthRate = (lastTotal - firstTotal) / months.length;
+        const historical = months.map(m => ({
+            month: m,
+            total: vitaminMonthlyData[m].total,
+            batches: vitaminMonthlyData[m].batches
+        }));
         
-        for (let i = 1; i <= 3; i++) {
-          let nextMonthNum = lastMonthNum + i;
-          let nextYear = lastYear;
-          if (nextMonthNum > 12) {
-            nextMonthNum -= 12;
-            nextYear++;
-          }
-          const nextMonthStr = `${nextYear}-${String(nextMonthNum).padStart(2, '0')}`;
-          const forecastTotal = lastTotal + (growthRate * i);
-          forecast.push({
-            month: nextMonthStr,
-            forecast: Math.max(0, forecastTotal),
-            confidence: months.length >= 3 ? 'high' : 'medium'
-          });
-        }
-      }
-      
-      setMonthlyVitaminTrend({
-        historical,
-        forecast,
-        trend: {
-          direction: trend > 5 ? 'up' : trend < -5 ? 'down' : 'stable',
-          rate: Math.abs(trend),
-          average_monthly: historical.reduce((sum, d) => sum + d.total, 0) / historical.length || 0
-        }
-      });
+        setMonthlyVitaminTrend({
+            historical,
+            forecast: [], 
+            trend: {
+                direction: 'stable', rate: 0, average_monthly: 0
+            }
+        });
     }
   };
 
@@ -624,7 +660,6 @@ const RealDashboard = ({ onNavigate }) => {
               const feed = data.feedForecast || [];
               const weight = data.weightForecast || [];
               
-              // Create weight map
               const weightMap = {};
               weight.forEach(w => {
                 const dayNum = parseInt(w.day.replace('Day ', ''));
@@ -679,6 +714,26 @@ const RealDashboard = ({ onNavigate }) => {
     if (onNavigate) {
       onNavigate('Expenses');
     }
+  };
+
+  const handlePopulationChange = (e) => {
+    const value = e.target.value;
+    if (value === '') {
+      setNextBatchPop('');
+      return;
+    }
+    if (!isNaN(value) && value.trim() !== '') {
+      setNextBatchPop(parseFloat(value));
+    } else {
+      setNextBatchPop(value);
+    }
+  };
+
+  const getInputDisplayValue = () => {
+    if (nextBatchPop === '' || nextBatchPop === null || nextBatchPop === undefined) {
+      return '';
+    }
+    return nextBatchPop.toString();
   };
 
   const batchTrendData = useMemo(() => {
@@ -784,12 +839,25 @@ const RealDashboard = ({ onNavigate }) => {
   }, [activeBatch]);
 
   const historyComparisonData = useMemo(() => {
-    return allBatchesData.filter(b => b.status === 'completed' || b.status === 'active').slice(-5).map(b => {
-        let exp = 0, sale = 0;
-        if (b.expenses) Object.values(b.expenses).forEach(e => exp += Number(e.amount || 0));
-        if (b.sales) Object.values(b.sales).forEach(s => sale += Number(s.totalAmount || 0));
-        return { name: b.batchName, income: sale - exp, status: b.status };
-    }).filter(b => b.income !== 0); // Only show batches with actual data
+    return allBatchesData
+        .filter(b => b.status === 'completed' || b.status === 'active')
+        .slice(0, 5)
+        .reverse()
+        .map(b => {
+            let exp = 0, sale = 0, mort = 0;
+            if (b.expenses) Object.values(b.expenses).forEach(e => exp += Number(e.amount || 0));
+            if (b.sales) Object.values(b.sales).forEach(s => sale += Number(s.totalAmount || 0));
+            if (b.mortality_logs) Object.values(b.mortality_logs).forEach(m => mort += (Number(m.am || 0) + Number(m.pm || 0)));
+            return { 
+              name: b.batchName, 
+              income: sale - exp, 
+              sales: sale,
+              expenses: exp,
+              mortality: mort,
+              population: b.startingPopulation || 0,
+              status: b.status 
+            };
+        }); 
   }, [allBatchesData]);
 
   const getFeedStatus = (feedType) => {
@@ -797,7 +865,6 @@ const RealDashboard = ({ onNavigate }) => {
     const purchased = stats.feedByType[feedType] || 0;
     const used = purchased;
     
-    // If no required amount, don't show status
     if (required === 0) {
       return { used: 0, required: 0, remaining: 0, percentage: 0, status: 'none', message: 'No forecast data' };
     }
@@ -816,25 +883,46 @@ const RealDashboard = ({ onNavigate }) => {
       message = 'Exactly on target';
     } else if (percentage < 30) {
       status = 'critical';
-      message = `Need ${remaining.toFixed(1)} kg urgently`;
+      message = ` CRITICAL: Need ${remaining.toFixed(1)} kg urgently`;
     } else if (percentage < 60) {
       status = 'warning';
-      message = `Prepare ${remaining.toFixed(1)} kg soon`;
+      message = ` Warning: Prepare ${remaining.toFixed(1)} kg soon`;
+    } else if (percentage < 90) {
+      status = 'good';
+      message = `✓Stock OK: ${remaining.toFixed(1)} kg left`;
     } else {
       status = 'good';
-      message = `Sufficient (${remaining.toFixed(1)} kg left)`;
+      message = ` Almost complete: ${remaining.toFixed(1)} kg left`;
     }
     
     return { used, required, remaining, percentage, status, message };
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-400 font-bold">Loading Dashboard...</div>;
-  if (!activeBatch) return <div className="p-10 text-center"><h3 className="text-xl font-bold text-red-900">No Active Batch</h3></div>;
+  if (loading) return <div className="p-8 text-center text-gray-400 font-bold text-sm">Loading Dashboard...</div>;
+  if (!activeBatch) return <div className="p-8 text-center"><h3 className="text-lg font-bold text-red-900">No Active Batch</h3></div>;
 
   const currentPop = (activeBatch.startingPopulation || 0) - stats.qtyHarvested - stats.mortality;
   const currentMetrics = getBatchMetrics(activeBatch);
   const prevMetrics = getBatchMetrics(previousBatch);
   const formatCurrency = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+
+  const formatHistoryTooltip = (value) => {
+     if (historyMetric === 'income' || historyMetric === 'sales' || historyMetric === 'expenses') {
+         return formatCurrency(value);
+     }
+     return value.toLocaleString();
+  };
+
+  const getMetricLabel = () => {
+     switch(historyMetric) {
+       case 'income': return 'Net Income';
+       case 'sales': return 'Sales';
+       case 'expenses': return 'Expenses';
+       case 'mortality': return 'Mortality';
+       case 'population': return 'Population';
+       default: return 'Value';
+     }
+  };
 
   const CustomFeedTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -842,11 +930,11 @@ const RealDashboard = ({ onNavigate }) => {
       if (!data) return null;
       
       return ( 
-        <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-100 min-w-[200px]">
-          <p className="text-xs font-bold text-gray-500 mb-1">Day {data.day}</p>
-          <p className="text-sm font-black text-indigo-600 mb-2">{data.feedType || 'Feed'}</p>
+        <div className="bg-white p-2.5 rounded-lg shadow-xl border border-gray-100 min-w-[180px]">
+          <p className="text-[10px] font-bold text-gray-500 mb-0.5">Day {data.day}</p>
+          <p className="text-xs font-black text-indigo-600 mb-1.5">{data.feedType || 'Feed'}</p>
           
-          <div className="space-y-1 text-xs">
+          <div className="space-y-1 text-[10px]">
             <div className="flex justify-between">
               <span className="text-gray-500">Feed Amount:</span>
               <span className="font-bold text-gray-800">{data.targetKilos?.toFixed(1) || '0'} kg</span>
@@ -855,11 +943,11 @@ const RealDashboard = ({ onNavigate }) => {
             {data.projectedWeight && (
               <>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Est. Batch Weight:</span>
+                  <span className="text-gray-500">Est. Weight:</span>
                   <span className="font-bold text-purple-600">{data.projectedWeight} kg</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Avg per Bird:</span>
+                  <span className="text-gray-500">Avg/Bird:</span>
                   <span className="font-bold text-gray-800">{data.avgWeight} g</span>
                 </div>
               </>
@@ -875,750 +963,835 @@ const RealDashboard = ({ onNavigate }) => {
   const starterStatus = getFeedStatus('Starter');
   const finisherStatus = getFeedStatus('Finisher');
 
+  const availableVitamins = Object.entries(vitaminForecast).filter(([key, value]) => value !== null);
+
+  const TABS = [
+    { id: 'financials', label: 'Financial Overview', icon: DollarSign },
+    { id: 'performance', label: 'Batch Performance', icon: Activity },
+    { id: 'feed', label: 'Feed Management', icon: Package },
+    { id: 'vitamins', label: 'Vitamin Tracker', icon: FlaskConical },
+  ];
+
   return (
-    <div className="flex-1 bg-gray-50 -mt-7 p-4 overflow-y-auto pb-20 relative">
+    <div className="flex-1 bg-gray-50 -mt-7 p-3 md:p-4 overflow-y-auto pb-16 relative">
       {/* HEADER */}
-      <div className="bg-[#3B0A0A] p-6 rounded-2xl shadow-xl text-white mb-8 relative overflow-hidden">
-        <div className="relative z-10 flex justify-between items-start mb-4">
+      <div className="bg-[#3B0A0A] p-4 rounded-xl shadow-lg text-white mb-4 relative overflow-hidden">
+        <div className="relative z-10 flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
-              <Layers size={20} className="text-orange-400"/><h1 className="text-2xl font-bold uppercase">{activeBatch.batchName}</h1>
-              {previousBatch && <button onClick={() => setShowCompareModal(true)} className="ml-2 flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg text-[10px] uppercase font-bold transition-colors border border-white/10"><GitCompare size={12} /> Compare vs Last</button>}
+              <Layers size={18} className="text-orange-400"/><h1 className="text-xl font-bold uppercase">{activeBatch.batchName}</h1>
+              {previousBatch && <button onClick={() => setShowCompareModal(true)} className="ml-2 flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded-lg text-[9px] uppercase font-bold transition-colors border border-white/10"><GitCompare size={10} /> Compare vs Last</button>}
           </div>
           <div className="flex items-center gap-2">
-            {/* NOTIFICATION ICON */}
             <div className="relative group/notify">
-                <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors relative">
-                    <Bell size={16} />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#3B0A0A]"></span>
+                <button className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors relative">
+                    <Bell size={14} />
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full border border-[#3B0A0A]"></span>
                 </button>
-                <div className="absolute top-full right-0 mt-2 scale-0 group-hover/notify:scale-100 transition-transform origin-top-right bg-white text-gray-800 text-[10px] font-bold py-1 px-2 rounded shadow-lg whitespace-nowrap z-50">
-                    BATCH ALERTS
-                </div>
             </div>
 
-            <button onClick={() => setShowSettingsModal(true)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"><Settings size={16} /></button>
-            <span className="text-xs text-orange-200 font-bold uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded">Day {currentBatchDay} / 30</span>
-            <span className="text-xs bg-green-500/20 text-green-400 px-3 py-1 rounded border border-green-500/30 font-bold uppercase">{activeBatch.status}</span>
+            <button onClick={() => setShowSettingsModal(true)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"><Settings size={14} /></button>
+            <span className="text-[10px] text-orange-200 font-bold uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded">Day {currentBatchDay} / 30</span>
+            <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-bold uppercase">{activeBatch.status}</span>
           </div>
         </div>
-        <div className="relative z-10 w-full bg-black/30 h-3 rounded-full overflow-hidden"><div className="bg-gradient-to-r from-orange-400 to-red-500 h-full transition-all duration-500 shadow-lg" style={{ width: `${progress}%` }} /></div>
-        <div className="relative z-10 flex justify-between mt-2 text-xs font-bold text-white/50 uppercase"><span>Started: {activeBatch.dateCreated}</span><span className="text-orange-300">Harvest: {activeBatch.expectedCompleteDate}</span></div>
+        <div className="relative z-10 w-full bg-black/30 h-2 rounded-full overflow-hidden"><div className="bg-gradient-to-r from-orange-400 to-red-500 h-full transition-all duration-500 shadow-sm" style={{ width: `${progress}%` }} /></div>
+        <div className="relative z-10 flex justify-between mt-1.5 text-[9px] font-bold text-white/50 uppercase"><span>Started: {activeBatch.dateCreated}</span><span className="text-orange-300">Harvest: {activeBatch.expectedCompleteDate}</span></div>
       </div>
 
-      {/* METRICS */}
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Financial Overview</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <MetricCard title="Total Sales" value={stats.sales} prevValue={prevMetrics?.sales || 0} icon={ShoppingBag} colorClass="text-blue-700" bgClass="bg-blue-50" barColor="#2563eb" isCurrency={true} isComparison={true} />
-        <MetricCard title="Net Profit" value={stats.sales - stats.expenses} prevValue={prevMetrics?.profit || 0} icon={Wallet} colorClass={stats.sales - stats.expenses >= 0 ? "text-emerald-700" : "text-red-700"} bgClass={stats.sales - stats.expenses >= 0 ? "bg-emerald-50" : "bg-red-50"} barColor="#10b981" isCurrency={true} isComparison={true} />
-        <MetricCard title="Total Expenses" value={stats.expenses} prevValue={prevMetrics?.expenses || 0} icon={TrendingDown} colorClass="text-red-700" bgClass="bg-red-50" barColor="#dc2626" isCurrency={true} isInverse={true} isComparison={true} />
+      {/* TABS NAVIGATION */}
+      <div className="flex overflow-x-auto gap-2 mb-4 pb-1 no-scrollbar">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-200 ${
+              activeTab === tab.id
+                ? 'bg-red-900 text-white shadow-sm' 
+                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Batch Performance</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <MetricCard title="Live Pop." value={currentPop} unit="heads" icon={Users} colorClass="text-cyan-700" bgClass="bg-cyan-50" barColor="#0891b2" graphData={batchTrendData.daily} graphKey="population" />
-        <MetricCard title="Mortality" value={stats.mortality} unit="heads" icon={Skull} colorClass="text-red-600" bgClass="bg-red-50" barColor="#dc2626" graphData={batchTrendData.daily} graphKey="mortality" />
-        <MetricCard title="Feed Used" value={stats.totalFeedKilos} unit="kg" icon={Package} colorClass="text-orange-700" bgClass="bg-orange-50" barColor="#f97316" graphData={batchTrendData.daily} graphKey="feed" />
-        <MetricCard title="Vitamins" value={stats.totalVitaminGrams} unit="g/ml" icon={FlaskConical} colorClass="text-green-700" bgClass="bg-green-50" barColor="#16a34a" graphData={batchTrendData.daily} graphKey="vitamins" />
-        <MetricCard title="Avg Weight" value={stats.avgWeight} unit="g" icon={Scale} colorClass="text-amber-700" bgClass="bg-amber-50" barColor="#d97706" graphData={batchTrendData.weekly} graphKey="weight" xKey="name" />
-        <MetricCard title="Qty Harvested" value={stats.qtyHarvested} prevValue={prevMetrics?.harvested || 0} unit="heads" icon={CheckCircle} colorClass="text-emerald-700" bgClass="bg-emerald-50" barColor="#10b981" isComparison={true} />
-      </div>
-
-      {/* PEN STATUS - Only show if there are pens with data */}
-      {penDistribution.length > 0 && (
-        <>
-          <h2 className="text-gray-400 font-bold text-xs uppercase tracking-widest mb-4 ml-1">Pen Status</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-            {penDistribution.map((pen) => (
-              <PenMetricCard key={pen.id} title={`Pen ${pen.id}`} count={pen.count} capacity={pen.capacity} chartData={pen.stats} />
-            ))}
+      {/* --- TAB CONTENT: FINANCIAL OVERVIEW --- */}
+      {activeTab === 'financials' && (
+        <div className="animate-fadeIn">
+          <h2 className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-3 ml-1">Financial Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <MetricCard title="Total Sales" value={stats.sales} prevValue={prevMetrics?.sales || 0} icon={ShoppingBag} colorClass="text-blue-700" bgClass="bg-blue-50" barColor="#2563eb" isCurrency={true} isComparison={true} />
+            <MetricCard title="Net Profit" value={stats.sales - stats.expenses} prevValue={prevMetrics?.profit || 0} icon={Wallet} colorClass={stats.sales - stats.expenses >= 0 ? "text-emerald-700" : "text-red-700"} bgClass={stats.sales - stats.expenses >= 0 ? "bg-emerald-50" : "bg-red-50"} barColor="#10b981" isCurrency={true} isComparison={true} />
+            <MetricCard title="Total Expenses" value={stats.expenses} prevValue={prevMetrics?.expenses || 0} icon={TrendingDown} colorClass="text-red-700" bgClass="bg-red-50" barColor="#dc2626" isCurrency={true} isInverse={true} isComparison={true} />
           </div>
-        </>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Expense Overview Pie Chart */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-1.5 bg-rose-50 rounded-lg">
+                  <PieIcon size={16} className="text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Expense Overview</h3>
+                </div>
+              </div>
+              <div className="h-56 w-full">
+                {expensePieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie 
+                        data={expensePieData} 
+                        cx="35%" 
+                        cy="50%" 
+                        innerRadius={50} 
+                        outerRadius={80} 
+                        paddingAngle={5} 
+                        dataKey="value"
+                      >
+                        {expensePieData.map((entry, index) => 
+                          <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        )}
+                      </Pie>
+                      <Tooltip formatter={(v) => formatCurrency(v)} wrapperStyle={{ fontSize: '10px' }} />
+                      <Legend 
+                        layout="vertical" 
+                        verticalAlign="middle" 
+                        align="right"
+                        iconType="circle" 
+                        wrapperStyle={{ fontSize: '11px', lineHeight: '24px', paddingLeft: '10px' }} 
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-xs">
+                    No expense data available
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* History Comparison Bar Chart */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-50 rounded-lg">
+                    <BarChart3 size={16} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">History Comparison</h3>
+                  </div>
+                </div>
+                {/* SELECTOR FOR CATEGORY */}
+                <select 
+                  value={historyMetric}
+                  onChange={(e) => setHistoryMetric(e.target.value)}
+                  className="text-[10px] font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="income">Net Income</option>
+                  <option value="sales">Sales</option>
+                  <option value="expenses">Expenses</option>
+                  <option value="mortality">Mortality</option>
+                  <option value="population">Population</option>
+                </select>
+              </div>
+              <div className="h-56 w-full">
+                {historyComparisonData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={historyComparisonData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                      <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10}} />
+                      <Tooltip formatter={(v) => [formatHistoryTooltip(v), getMetricLabel()]} wrapperStyle={{ fontSize: '10px' }} />
+                      <Bar dataKey={historyMetric} radius={[6, 6, 0, 0]} barSize={28}>
+                        {historyComparisonData.map((entry, index) => 
+                          <Cell key={`cell-${index}`} fill={entry.status === 'active' ? '#f97316' : '#3B0A0A'} />
+                        )}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-xs">
+                    No historical data available
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* FULL WIDTH FORECAST CHART */}
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            <div className="flex items-center gap-2">
-                <div className="p-2 bg-orange-50 rounded-lg"><Package size={18} className="text-orange-600" /></div>
-                <div>
-                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Consumption & Weight Forecast</h3>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Hover over bars to see details</p>
+      {/* --- TAB CONTENT: BATCH PERFORMANCE --- */}
+      {activeTab === 'performance' && (
+        <div className="animate-fadeIn">
+          <h2 className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-3 ml-1">Batch Performance</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <MetricCard title="Live Pop." value={currentPop} unit="heads" icon={Users} colorClass="text-cyan-700" bgClass="bg-cyan-50" barColor="#0891b2" graphData={batchTrendData.daily} graphKey="population" />
+            <MetricCard title="Mortality" value={stats.mortality} unit="heads" icon={Skull} colorClass="text-red-600" bgClass="bg-red-50" barColor="#dc2626" graphData={batchTrendData.daily} graphKey="mortality" />
+            <MetricCard title="Feed Used" value={stats.totalFeedKilos} unit="kg" icon={Package} colorClass="text-orange-700" bgClass="bg-orange-50" barColor="#f97316" graphData={batchTrendData.daily} graphKey="feed" />
+            <MetricCard title="Vitamins" value={stats.totalVitaminGrams} unit="g/ml" icon={FlaskConical} colorClass="text-green-700" bgClass="bg-green-50" barColor="#16a34a" graphData={batchTrendData.daily} graphKey="vitamins" />
+            <MetricCard title="Avg Weight" value={stats.avgWeight} unit="g" icon={Scale} colorClass="text-amber-700" bgClass="bg-amber-50" barColor="#d97706" graphData={batchTrendData.weekly} graphKey="weight" xKey="name" />
+            <MetricCard title="Qty Harvested" value={stats.qtyHarvested} prevValue={prevMetrics?.harvested || 0} unit="heads" icon={CheckCircle} colorClass="text-emerald-700" bgClass="bg-emerald-50" barColor="#10b981" isComparison={true} />
+          </div>
+
+          {/* PEN STATUS */}
+          {penDistribution.length > 0 && (
+            <>
+              <h2 className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-3 ml-1">Pen Status</h2>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                {penDistribution.map((pen) => (
+                  <PenMetricCard key={pen.id} title={`Pen ${pen.id}`} count={pen.count} capacity={pen.capacity} chartData={pen.stats} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* --- TAB CONTENT: FEED MANAGEMENT --- */}
+      {activeTab === 'feed' && (
+        <div className="animate-fadeIn">
+          {/* FULL WIDTH FORECAST CHART */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3 border-b pb-3 border-gray-50">
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-orange-50 rounded-lg"><Package size={16} className="text-orange-600" /></div>
+                    <div>
+                        <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Feed & Weight Forecast</h3>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Hover to see details</p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 text-[10px]">
+                    <div className="px-2 py-1 bg-green-50 rounded-lg border border-green-100"><span className="block text-[8px] font-bold text-green-600 uppercase">Booster</span><span className="font-black text-gray-700">{feedBreakdown.Booster.toFixed(1)}</span></div>
+                    <div className="px-2 py-1 bg-emerald-50 rounded-lg border border-emerald-100"><span className="block text-[8px] font-bold text-emerald-600 uppercase">Starter</span><span className="font-black text-gray-700">{feedBreakdown.Starter.toFixed(1)}</span></div>
+                    <div className="px-2 py-1 bg-yellow-50 rounded-lg border border-yellow-100"><span className="block text-[8px] font-bold text-yellow-600 uppercase">Finisher</span><span className="font-black text-gray-700">{feedBreakdown.Finisher.toFixed(1)}</span></div>
+                    <div className="px-2 py-1 bg-indigo-600 rounded-lg border border-indigo-700 text-white"><span className="block text-[8px] font-bold uppercase opacity-80">Total</span><span className="font-black">{feedBreakdown.Total.toFixed(1)} kg</span></div>
                 </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-                <div className="px-3 py-1 bg-green-50 rounded-lg border border-green-100"><span className="block text-[9px] font-bold text-green-600 uppercase">Booster</span><span className="font-black text-gray-700 text-sm">{feedBreakdown.Booster.toFixed(1)}</span></div>
-                <div className="px-3 py-1 bg-emerald-50 rounded-lg border border-emerald-100"><span className="block text-[9px] font-bold text-emerald-600 uppercase">Starter</span><span className="font-black text-gray-700 text-sm">{feedBreakdown.Starter.toFixed(1)}</span></div>
-                <div className="px-3 py-1 bg-yellow-50 rounded-lg border border-yellow-100"><span className="block text-[9px] font-bold text-yellow-600 uppercase">Finisher</span><span className="font-black text-gray-700 text-sm">{feedBreakdown.Finisher.toFixed(1)}</span></div>
-                <div className="px-3 py-1 bg-indigo-600 rounded-lg border border-indigo-700 text-white"><span className="block text-[9px] font-bold uppercase opacity-80">Total</span><span className="font-black text-sm">{feedBreakdown.Total.toFixed(1)} kg</span></div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-4 h-56 w-full">
+                  {!loadingForecast && forecastData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart 
+                        data={forecastData} 
+                        margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <XAxis 
+                          dataKey="day" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{fontSize: 9, fill: '#9ca3af'}}
+                        />
+                        <YAxis 
+                          yAxisId="left" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{fontSize: 9, fill: '#9ca3af'}}
+                        />
+                        <YAxis 
+                          yAxisId="right" 
+                          orientation="right" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{fontSize: 9, fill: '#8b5cf6'}}
+                        />
+                        <Tooltip content={<CustomFeedTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', paddingTop: '5px' }} />
+                        <Area 
+                          yAxisId="left" 
+                          type="monotone" 
+                          dataKey="Booster" 
+                          stackId="1" 
+                          stroke={FEED_COLORS.Booster} 
+                          fill={FEED_COLORS.Booster} 
+                          strokeWidth={2} 
+                          fillOpacity={0.6} 
+                          name="Booster"
+                        />
+                        <Area 
+                          yAxisId="left" 
+                          type="monotone" 
+                          dataKey="Starter" 
+                          stackId="1" 
+                          stroke={FEED_COLORS.Starter} 
+                          fill={FEED_COLORS.Starter} 
+                          strokeWidth={2} 
+                          fillOpacity={0.6} 
+                          name="Starter"
+                        />
+                        <Area 
+                          yAxisId="left" 
+                          type="monotone" 
+                          dataKey="Finisher" 
+                          stackId="1" 
+                          stroke={FEED_COLORS.Finisher} 
+                          fill={FEED_COLORS.Finisher} 
+                          strokeWidth={2} 
+                          fillOpacity={0.6} 
+                          name="Finisher"
+                        />
+                        <Line 
+                          yAxisId="right" 
+                          connectNulls 
+                          type="monotone" 
+                          dataKey="projectedWeight" 
+                          name="Est. Batch Weight" 
+                          stroke="#8b5cf6" 
+                          strokeWidth={2} 
+                          dot={{r: 3, fill: '#8b5cf6', strokeWidth: 1.5, stroke: '#fff'}} 
+                          activeDot={{ r: 5 }} 
+                        />
+                        <ReferenceLine 
+                          yAxisId="left" 
+                          x={currentBatchDay} 
+                          stroke="#f97316" 
+                          strokeWidth={2} 
+                          strokeDasharray="3 3" 
+                          label={{ 
+                            position: 'top', 
+                            value: 'Today', 
+                            fill: '#f97316', 
+                            fontSize: 9, 
+                            fontWeight: 'bold' 
+                          }} 
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-400 text-xs">
+                      {loadingForecast ? 'Loading...' : 'No data available'}
+                    </div>
+                  )}
+                </div>
             </div>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-4 h-80 w-full">
-              {!loadingForecast && forecastData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart 
-                    data={forecastData} 
-                    margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+          </div>
+
+          {/* FEED INSIGHT SECTION */}
+          {(boosterStatus.required > 0 || starterStatus.required > 0 || finisherStatus.required > 0) && (
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3 border-b pb-3 border-gray-50">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-50 rounded-lg">
+                    <Sack size={16} className="text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Feed Inventory Status</h3>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowFeedTips(!showFeedTips)}
+                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all"
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="day" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{fontSize: 10, fill: '#9ca3af'}}
-                    />
-                    <YAxis 
-                      yAxisId="left" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{fontSize: 10, fill: '#9ca3af'}}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{fontSize: 10, fill: '#8b5cf6'}}
-                    />
-                    <Tooltip content={<CustomFeedTooltip />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
-                    <Area 
-                      yAxisId="left" 
-                      type="monotone" 
-                      dataKey="Booster" 
-                      stackId="1" 
-                      stroke={FEED_COLORS.Booster} 
-                      fill={FEED_COLORS.Booster} 
-                      strokeWidth={2} 
-                      fillOpacity={0.6} 
-                      name="Booster"
-                    />
-                    <Area 
-                      yAxisId="left" 
-                      type="monotone" 
-                      dataKey="Starter" 
-                      stackId="1" 
-                      stroke={FEED_COLORS.Starter} 
-                      fill={FEED_COLORS.Starter} 
-                      strokeWidth={2} 
-                      fillOpacity={0.6} 
-                      name="Starter"
-                    />
-                    <Area 
-                      yAxisId="left" 
-                      type="monotone" 
-                      dataKey="Finisher" 
-                      stackId="1" 
-                      stroke={FEED_COLORS.Finisher} 
-                      fill={FEED_COLORS.Finisher} 
-                      strokeWidth={2} 
-                      fillOpacity={0.6} 
-                      name="Finisher"
-                    />
-                    <Line 
-                      yAxisId="right" 
-                      connectNulls 
-                      type="monotone" 
-                      dataKey="projectedWeight" 
-                      name="Est. Batch Weight" 
-                      stroke="#8b5cf6" 
-                      strokeWidth={3} 
-                      dot={{r: 4, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff'}} 
-                      activeDot={{ r: 6 }} 
-                    />
-                    <ReferenceLine 
-                      yAxisId="left" 
-                      x={currentBatchDay} 
-                      stroke="#f97316" 
-                      strokeWidth={2} 
-                      strokeDasharray="3 3" 
-                      label={{ 
-                        position: 'top', 
-                        value: 'Today', 
-                        fill: '#f97316', 
-                        fontSize: 10, 
-                        fontWeight: 'bold' 
-                      }} 
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-400">
-                  {loadingForecast ? 'Loading forecast data...' : 'No forecast data available'}
+                    <Info size={12} />
+                    {showFeedTips ? 'Hide Tips' : 'Tips'}
+                  </button>
+                  
+                  <button 
+                    onClick={handleNavigateToExpenses}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 shadow-sm"
+                  >
+                    <Plus size={14} />
+                    Manage
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {showFeedTips && (
+                <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-fadeIn">
+                  <div className="flex items-start gap-2">
+                    <div className="p-1.5 bg-blue-100 rounded-md">
+                      <Info size={14} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-black text-blue-800 mb-1.5">Quick Tips</h4>
+                      <ul className="space-y-1 text-[10px]">
+                        <li className="flex items-start gap-1.5">
+                          <div className="w-1 h-1 bg-blue-600 rounded-full mt-1"></div>
+                          <span className="text-blue-700">Keep at least 3 days of feed stock to avoid interruptions.</span>
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <div className="w-1 h-1 bg-blue-600 rounded-full mt-1"></div>
+                          <span className="text-blue-700">Check feed quality before each feeding.</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-        </div>
-      </div>
 
-      {/* FEED INSIGHT SECTION - Only show if there's feed data */}
-      {(boosterStatus.required > 0 || starterStatus.required > 0 || finisherStatus.required > 0) && (
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-amber-50 rounded-lg">
-                <Sack size={18} className="text-amber-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Feed Inventory Status</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Based on expenses and forecasts</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowFeedTips(!showFeedTips)}
-                className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-xs font-bold transition-all"
-              >
-                <Info size={14} />
-                {showFeedTips ? 'Hide Tips' : 'Tips'}
-              </button>
-              
-              <button 
-                onClick={handleNavigateToExpenses}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 shadow-md hover:shadow-lg"
-              >
-                <ShoppingCart size={16} />
-                Manage Feed Expenses
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-
-          {showFeedTips && (
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fadeIn">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Info size={18} className="text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-black text-blue-800 mb-2">Quick Feed Tips</h4>
-                  <ul className="space-y-2 text-xs">
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-blue-600 rounded-full mt-1.5"></div>
-                      <span className="text-blue-700">Keep at least 3 days of feed stock to avoid interruptions</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-blue-600 rounded-full mt-1.5"></div>
-                      <span className="text-blue-700">Check feed quality before each feeding</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-blue-600 rounded-full mt-1.5"></div>
-                      <span className="text-blue-700">Record feed consumption daily to track efficiency</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Booster Card - Only show if there's data */}
-            {boosterStatus.required > 0 && (
-              <div className={`relative overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg ${
-                boosterStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
-                boosterStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
-                'bg-gradient-to-br from-green-50 to-green-100 border-green-300'
-              }`}>
-                <div className="p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2.5 rounded-xl ${
-                      boosterStatus.status === 'critical' ? 'bg-red-200' :
-                      boosterStatus.status === 'warning' ? 'bg-amber-200' :
-                      'bg-green-200'
-                    }`}>
-                      <Sack size={22} className={
-                        boosterStatus.status === 'critical' ? 'text-red-700' :
-                        boosterStatus.status === 'warning' ? 'text-amber-700' :
-                        'text-green-700'
-                      } />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-base text-gray-800">Booster Feed</h4>
-                      <p className="text-[10px] text-gray-500">Days 1-10</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-16 h-16">
-                      <svg className="w-16 h-16 transform -rotate-90">
-                        <circle cx="32" cy="32" r="28" stroke="#e5e7eb" strokeWidth="6" fill="none" />
-                        <circle cx="32" cy="32" r="28" stroke={boosterStatus.status === 'critical' ? '#ef4444' : boosterStatus.status === 'warning' ? '#f59e0b' : '#22c55e'} strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 28}`} strokeDashoffset={`${2 * Math.PI * 28 * (1 - boosterStatus.percentage / 100)}`} className="transition-all duration-500" />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-xs font-black">{Math.round(boosterStatus.percentage)}%</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-black text-gray-800">{boosterStatus.used.toFixed(1)}<span className="text-xs font-normal text-gray-500 ml-1">kg</span></p>
-                      <p className="text-xs text-gray-500">of {boosterStatus.required.toFixed(1)} kg</p>
-                    </div>
-                  </div>
-
-                  <div className={`p-3 rounded-xl mb-3 ${
-                    boosterStatus.status === 'critical' ? 'bg-red-200/50' :
-                    boosterStatus.status === 'warning' ? 'bg-amber-200/50' :
-                    boosterStatus.status === 'excess' ? 'bg-blue-200/50' :
-                    'bg-green-200/50'
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Booster Card */}
+                {boosterStatus.required > 0 && (
+                  <div className={`relative overflow-hidden rounded-xl border transition-all duration-300 ${
+                    boosterStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
+                    boosterStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
+                    'bg-gradient-to-br from-green-50 to-green-100 border-green-300'
                   }`}>
-                    <div className="flex items-start gap-2">
-                      {boosterStatus.status === 'critical' && <AlertTriangle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />}
-                      {boosterStatus.status === 'warning' && <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />}
-                      {boosterStatus.status === 'good' && <CheckCircle size={16} className="text-green-600 flex-shrink-0 mt-0.5" />}
-                      {boosterStatus.status === 'excess' && <CheckCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />}
-                      <p className={`text-xs font-bold ${
-                        boosterStatus.status === 'critical' ? 'text-red-700' :
-                        boosterStatus.status === 'warning' ? 'text-amber-700' :
-                        boosterStatus.status === 'excess' ? 'text-blue-700' :
-                        'text-green-700'
-                      }`}>
-                        {boosterStatus.message}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleNavigateToExpenses}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <ShoppingCart size={14} />
-                    Buy More
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Starter Card - Only show if there's data */}
-            {starterStatus.required > 0 && (
-              <div className={`relative overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg ${
-                starterStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
-                starterStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
-                'bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-300'
-              }`}>
-                <div className="p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2.5 rounded-xl ${
-                      starterStatus.status === 'critical' ? 'bg-red-200' :
-                      starterStatus.status === 'warning' ? 'bg-amber-200' :
-                      'bg-emerald-200'
-                    }`}>
-                      <Sack size={22} className={
-                        starterStatus.status === 'critical' ? 'text-red-700' :
-                        starterStatus.status === 'warning' ? 'text-amber-700' :
-                        'text-emerald-700'
-                      } />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-base text-gray-800">Starter Feed</h4>
-                      <p className="text-[10px] text-gray-500">Days 11-20</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-16 h-16">
-                      <svg className="w-16 h-16 transform -rotate-90">
-                        <circle cx="32" cy="32" r="28" stroke="#e5e7eb" strokeWidth="6" fill="none" />
-                        <circle cx="32" cy="32" r="28" stroke={starterStatus.status === 'critical' ? '#ef4444' : starterStatus.status === 'warning' ? '#f59e0b' : '#15803d'} strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 28}`} strokeDashoffset={`${2 * Math.PI * 28 * (1 - starterStatus.percentage / 100)}`} className="transition-all duration-500" />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-xs font-black">{Math.round(starterStatus.percentage)}%</span>
+                    <div className="p-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={`p-1.5 rounded-lg ${
+                          boosterStatus.status === 'critical' ? 'bg-red-200' :
+                          boosterStatus.status === 'warning' ? 'bg-amber-200' :
+                          'bg-green-200'
+                        }`}>
+                          <Sack size={16} className={
+                            boosterStatus.status === 'critical' ? 'text-red-700' :
+                            boosterStatus.status === 'warning' ? 'text-amber-700' :
+                            'text-green-700'
+                          } />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-xs text-gray-800">Booster</h4>
+                          <p className="text-[9px] text-gray-500">Days 1-10</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-black text-gray-800">{starterStatus.used.toFixed(1)}<span className="text-xs font-normal text-gray-500 ml-1">kg</span></p>
-                      <p className="text-xs text-gray-500">of {starterStatus.required.toFixed(1)} kg</p>
-                    </div>
-                  </div>
 
-                  <div className={`p-3 rounded-xl mb-3 ${
-                    starterStatus.status === 'critical' ? 'bg-red-200/50' :
-                    starterStatus.status === 'warning' ? 'bg-amber-200/50' :
-                    starterStatus.status === 'excess' ? 'bg-blue-200/50' :
-                    'bg-emerald-200/50'
-                  }`}>
-                    <div className="flex items-start gap-2">
-                      {starterStatus.status === 'critical' && <AlertTriangle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />}
-                      {starterStatus.status === 'warning' && <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />}
-                      {starterStatus.status === 'good' && <CheckCircle size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />}
-                      {starterStatus.status === 'excess' && <CheckCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />}
-                      <p className={`text-xs font-bold ${
-                        starterStatus.status === 'critical' ? 'text-red-700' :
-                        starterStatus.status === 'warning' ? 'text-amber-700' :
-                        starterStatus.status === 'excess' ? 'text-blue-700' :
-                        'text-emerald-700'
-                      }`}>
-                        {starterStatus.message}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleNavigateToExpenses}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <ShoppingCart size={14} />
-                    Buy More
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Finisher Card - Only show if there's data */}
-            {finisherStatus.required > 0 && (
-              <div className={`relative overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg ${
-                finisherStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
-                finisherStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
-                'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300'
-              }`}>
-                <div className="p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`p-2.5 rounded-xl ${
-                      finisherStatus.status === 'critical' ? 'bg-red-200' :
-                      finisherStatus.status === 'warning' ? 'bg-amber-200' :
-                      'bg-yellow-200'
-                    }`}>
-                      <Sack size={22} className={
-                        finisherStatus.status === 'critical' ? 'text-red-700' :
-                        finisherStatus.status === 'warning' ? 'text-amber-700' :
-                        'text-yellow-700'
-                      } />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-base text-gray-800">Finisher Feed</h4>
-                      <p className="text-[10px] text-gray-500">Days 21-30</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-16 h-16">
-                      <svg className="w-16 h-16 transform -rotate-90">
-                        <circle cx="32" cy="32" r="28" stroke="#e5e7eb" strokeWidth="6" fill="none" />
-                        <circle cx="32" cy="32" r="28" stroke={finisherStatus.status === 'critical' ? '#ef4444' : finisherStatus.status === 'warning' ? '#f59e0b' : '#eab308'} strokeWidth="6" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 28}`} strokeDashoffset={`${2 * Math.PI * 28 * (1 - finisherStatus.percentage / 100)}`} className="transition-all duration-500" />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-xs font-black">{Math.round(finisherStatus.percentage)}%</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="relative w-12 h-12">
+                          <svg className="w-12 h-12 transform -rotate-90">
+                            <circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="4" fill="none" />
+                            <circle cx="24" cy="24" r="20" stroke={boosterStatus.status === 'critical' ? '#ef4444' : boosterStatus.status === 'warning' ? '#f59e0b' : '#22c55e'} strokeWidth="4" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 20}`} strokeDashoffset={`${2 * Math.PI * 20 * (1 - boosterStatus.percentage / 100)}`} className="transition-all duration-500" />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-black">{Math.round(boosterStatus.percentage)}%</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-black text-gray-800">{boosterStatus.used.toFixed(1)}<span className="text-[9px] font-normal text-gray-500 ml-0.5">kg</span></p>
+                          <p className="text-[9px] text-gray-500">of {boosterStatus.required.toFixed(1)} kg</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-black text-gray-800">{finisherStatus.used.toFixed(1)}<span className="text-xs font-normal text-gray-500 ml-1">kg</span></p>
-                      <p className="text-xs text-gray-500">of {finisherStatus.required.toFixed(1)} kg</p>
-                    </div>
-                  </div>
 
-                  <div className={`p-3 rounded-xl mb-3 ${
-                    finisherStatus.status === 'critical' ? 'bg-red-200/50' :
-                    finisherStatus.status === 'warning' ? 'bg-amber-200/50' :
-                    finisherStatus.status === 'excess' ? 'bg-blue-200/50' :
-                    'bg-yellow-200/50'
-                  }`}>
-                    <div className="flex items-start gap-2">
-                      {finisherStatus.status === 'critical' && <AlertTriangle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />}
-                      {finisherStatus.status === 'warning' && <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />}
-                      {finisherStatus.status === 'good' && <CheckCircle size={16} className="text-yellow-600 flex-shrink-0 mt-0.5" />}
-                      {finisherStatus.status === 'excess' && <CheckCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />}
-                      <p className={`text-xs font-bold ${
-                        finisherStatus.status === 'critical' ? 'text-red-700' :
-                        finisherStatus.status === 'warning' ? 'text-amber-700' :
-                        finisherStatus.status === 'excess' ? 'text-blue-700' :
-                        'text-yellow-700'
+                      <div className={`p-2 rounded-lg mb-2 ${
+                        boosterStatus.status === 'critical' ? 'bg-red-200/50' :
+                        boosterStatus.status === 'warning' ? 'bg-amber-200/50' :
+                        boosterStatus.status === 'excess' ? 'bg-blue-200/50' :
+                        'bg-green-200/50'
                       }`}>
-                        {finisherStatus.message}
-                      </p>
+                        <div className="flex items-start gap-1.5">
+                          {boosterStatus.status === 'critical' && <AlertTriangle size={12} className="text-red-600 flex-shrink-0 mt-0.5" />}
+                          {boosterStatus.status === 'warning' && <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />}
+                          {boosterStatus.status === 'good' && <CheckCircle size={12} className="text-green-600 flex-shrink-0 mt-0.5" />}
+                          {boosterStatus.status === 'excess' && <CheckCircle size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />}
+                          <p className={`text-[9px] font-bold ${
+                            boosterStatus.status === 'critical' ? 'text-red-700' :
+                            boosterStatus.status === 'warning' ? 'text-amber-700' :
+                            boosterStatus.status === 'excess' ? 'text-blue-700' :
+                            'text-green-700'
+                          }`}>
+                            {boosterStatus.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleNavigateToExpenses}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-md text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Plus size={12} />
+                        Add More
+                      </button>
                     </div>
                   </div>
+                )}
 
-                  <button 
-                    onClick={handleNavigateToExpenses}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <ShoppingCart size={14} />
-                    Buy More
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+                {/* Starter Card */}
+                {starterStatus.required > 0 && (
+                  <div className={`relative overflow-hidden rounded-xl border transition-all duration-300 ${
+                    starterStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
+                    starterStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
+                    'bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-300'
+                  }`}>
+                    <div className="p-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={`p-1.5 rounded-lg ${
+                          starterStatus.status === 'critical' ? 'bg-red-200' :
+                          starterStatus.status === 'warning' ? 'bg-amber-200' :
+                          'bg-emerald-200'
+                        }`}>
+                          <Sack size={16} className={
+                            starterStatus.status === 'critical' ? 'text-red-700' :
+                            starterStatus.status === 'warning' ? 'text-amber-700' :
+                            'text-emerald-700'
+                          } />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-xs text-gray-800">Starter</h4>
+                          <p className="text-[9px] text-gray-500">Days 11-20</p>
+                        </div>
+                      </div>
 
-          {(boosterStatus.status === 'critical' || starterStatus.status === 'critical' || finisherStatus.status === 'critical') && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <AlertTriangle size={20} className="text-red-500" />
-                <div>
-                  <p className="text-sm font-black text-red-800">Critical Feed Alert!</p>
-                  <p className="text-xs text-red-600">Some feed types are running low. Order immediately.</p>
-                </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="relative w-12 h-12">
+                          <svg className="w-12 h-12 transform -rotate-90">
+                            <circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="4" fill="none" />
+                            <circle cx="24" cy="24" r="20" stroke={starterStatus.status === 'critical' ? '#ef4444' : starterStatus.status === 'warning' ? '#f59e0b' : '#15803d'} strokeWidth="4" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 20}`} strokeDashoffset={`${2 * Math.PI * 20 * (1 - starterStatus.percentage / 100)}`} className="transition-all duration-500" />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-black">{Math.round(starterStatus.percentage)}%</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-black text-gray-800">{starterStatus.used.toFixed(1)}<span className="text-[9px] font-normal text-gray-500 ml-0.5">kg</span></p>
+                          <p className="text-[9px] text-gray-500">of {starterStatus.required.toFixed(1)} kg</p>
+                        </div>
+                      </div>
+
+                      <div className={`p-2 rounded-lg mb-2 ${
+                        starterStatus.status === 'critical' ? 'bg-red-200/50' :
+                        starterStatus.status === 'warning' ? 'bg-amber-200/50' :
+                        starterStatus.status === 'excess' ? 'bg-blue-200/50' :
+                        'bg-emerald-200/50'
+                      }`}>
+                        <div className="flex items-start gap-1.5">
+                          {starterStatus.status === 'critical' && <AlertTriangle size={12} className="text-red-600 flex-shrink-0 mt-0.5" />}
+                          {starterStatus.status === 'warning' && <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />}
+                          {starterStatus.status === 'good' && <CheckCircle size={12} className="text-emerald-600 flex-shrink-0 mt-0.5" />}
+                          {starterStatus.status === 'excess' && <CheckCircle size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />}
+                          <p className={`text-[9px] font-bold ${
+                            starterStatus.status === 'critical' ? 'text-red-700' :
+                            starterStatus.status === 'warning' ? 'text-amber-700' :
+                            starterStatus.status === 'excess' ? 'text-blue-700' :
+                            'text-emerald-700'
+                          }`}>
+                            {starterStatus.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleNavigateToExpenses}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-md text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Plus size={12} />
+                        Add More
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Finisher Card */}
+                {finisherStatus.required > 0 && (
+                  <div className={`relative overflow-hidden rounded-xl border transition-all duration-300 ${
+                    finisherStatus.status === 'critical' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
+                    finisherStatus.status === 'warning' ? 'bg-gradient-to-br from-amber-50 to-amber-100 border-amber-300' :
+                    'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300'
+                  }`}>
+                    <div className="p-3">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={`p-1.5 rounded-lg ${
+                          finisherStatus.status === 'critical' ? 'bg-red-200' :
+                          finisherStatus.status === 'warning' ? 'bg-amber-200' :
+                          'bg-yellow-200'
+                        }`}>
+                          <Sack size={16} className={
+                            finisherStatus.status === 'critical' ? 'text-red-700' :
+                            finisherStatus.status === 'warning' ? 'text-amber-700' :
+                            'text-yellow-700'
+                          } />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-xs text-gray-800">Finisher</h4>
+                          <p className="text-[9px] text-gray-500">Days 21-30</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="relative w-12 h-12">
+                          <svg className="w-12 h-12 transform -rotate-90">
+                            <circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="4" fill="none" />
+                            <circle cx="24" cy="24" r="20" stroke={finisherStatus.status === 'critical' ? '#ef4444' : finisherStatus.status === 'warning' ? '#f59e0b' : '#eab308'} strokeWidth="4" fill="none" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 20}`} strokeDashoffset={`${2 * Math.PI * 20 * (1 - finisherStatus.percentage / 100)}`} className="transition-all duration-500" />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-black">{Math.round(finisherStatus.percentage)}%</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-black text-gray-800">{finisherStatus.used.toFixed(1)}<span className="text-[9px] font-normal text-gray-500 ml-0.5">kg</span></p>
+                          <p className="text-[9px] text-gray-500">of {finisherStatus.required.toFixed(1)} kg</p>
+                        </div>
+                      </div>
+
+                      <div className={`p-2 rounded-lg mb-2 ${
+                        finisherStatus.status === 'critical' ? 'bg-red-200/50' :
+                        finisherStatus.status === 'warning' ? 'bg-amber-200/50' :
+                        finisherStatus.status === 'excess' ? 'bg-blue-200/50' :
+                        'bg-yellow-200/50'
+                      }`}>
+                        <div className="flex items-start gap-1.5">
+                          {finisherStatus.status === 'critical' && <AlertTriangle size={12} className="text-red-600 flex-shrink-0 mt-0.5" />}
+                          {finisherStatus.status === 'warning' && <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />}
+                          {finisherStatus.status === 'good' && <CheckCircle size={12} className="text-yellow-600 flex-shrink-0 mt-0.5" />}
+                          {finisherStatus.status === 'excess' && <CheckCircle size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />}
+                          <p className={`text-[9px] font-bold ${
+                            finisherStatus.status === 'critical' ? 'text-red-700' :
+                            finisherStatus.status === 'warning' ? 'text-amber-700' :
+                            finisherStatus.status === 'excess' ? 'text-blue-700' :
+                            'text-yellow-700'
+                          }`}>
+                            {finisherStatus.message}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleNavigateToExpenses}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-md text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Plus size={12} />
+                        Add More
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <button 
-                onClick={handleNavigateToExpenses}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
-              >
-                Order Now
-                <ArrowRight size={16} />
-              </button>
+
+              {/* Feed Critical Alert Banner */}
+              {(() => {
+                const criticalFeeds = [
+                  boosterStatus.status === 'critical' ? 'Booster' : null,
+                  starterStatus.status === 'critical' ? 'Starter' : null,
+                  finisherStatus.status === 'critical' ? 'Finisher' : null
+                ].filter(Boolean);
+
+                if (criticalFeeds.length > 0) {
+                  return (
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-red-500" />
+                        <div>
+                          <p className="text-xs font-black text-red-800">Critical Feed Alert!</p>
+                          <p className="text-[10px] text-red-600 font-medium leading-tight">
+                            {criticalFeeds.join(', ')} {criticalFeeds.length > 1 ? 'are' : 'is'} running low.
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={handleNavigateToExpenses}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold flex items-center gap-1.5 shadow-sm"
+                      >
+                        Add Now
+                        <ArrowRight size={12} />
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
         </div>
       )}
 
-      {/* VITAMIN FORECAST INSIGHT - Only show if there's vitamin data */}
-      {Object.keys(vitaminForecast).length > 0 && (
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b pb-4 border-gray-50">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-purple-50 rounded-lg">
-                <FlaskConical size={18} className="text-purple-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Vitamin Forecast (Based on Last Batches)</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Uses actual usage from {monthlyVitaminTrend.historical?.length || 0} previous batches</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowVitaminTips(!showVitaminTips)}
-                className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-xs font-bold transition-all"
-              >
-                <Info size={14} />
-                {showVitaminTips ? 'Hide Tips' : 'Tips'}
-              </button>
-              
-              <button 
-                onClick={handleNavigateToExpenses}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 shadow-md hover:shadow-lg"
-              >
-                <ShoppingCart size={16} />
-                Manage Vitamin Expenses
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-
-          {showVitaminTips && (
-            <div className="mb-6 bg-purple-50 border border-purple-200 rounded-xl p-4 animate-fadeIn">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Info size={18} className="text-purple-600" />
+      {/* --- TAB CONTENT: VITAMIN TRACKER --- */}
+      {activeTab === 'vitamins' && (
+        <div className="animate-fadeIn">
+          {availableVitamins.length > 0 ? (
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3 border-b pb-3 border-gray-50">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-purple-50 rounded-lg">
+                    <FlaskConical size={16} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-gray-800 uppercase tracking-wide">Vitamin Tracker</h3>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-black text-purple-800 mb-2">Vitamin Insights</h4>
-                  <ul className="space-y-2 text-xs">
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-purple-600 rounded-full mt-1.5"></div>
-                      <span className="text-purple-700">Forecast based on last {monthlyVitaminTrend.historical?.length || 0} batches of actual usage</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-purple-600 rounded-full mt-1.5"></div>
-                      <span className="text-purple-700">Shows what you need for this batch based on past consumption</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <div className="w-1 h-1 bg-purple-600 rounded-full mt-1.5"></div>
-                      <span className="text-purple-700">Trend indicators show if usage is increasing or decreasing</span>
-                    </li>
-                  </ul>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowVitaminTips(!showVitaminTips)}
+                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                  >
+                    <Info size={12} />
+                    {showVitaminTips ? 'Hide' : 'Tips'}
+                  </button>
+                  
+                  <button 
+                    onClick={handleNavigateToExpenses}
+                    className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 shadow-sm"
+                  >
+                    <Plus size={14} />
+                    Manage
+                    <ArrowRight size={14} />
+                  </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {monthlyVitaminTrend.historical && monthlyVitaminTrend.historical.length > 0 && (
-            <div className="mb-4 grid grid-cols-4 gap-2 text-xs">
-              <div className="bg-gray-50 p-2 rounded-lg text-center">
-                <p className="text-gray-500">Batches Analyzed</p>
-                <p className="font-black text-gray-800">{monthlyVitaminTrend.historical.reduce((sum, d) => sum + d.batches, 0)}</p>
-              </div>
-              <div className="bg-gray-50 p-2 rounded-lg text-center">
-                <p className="text-gray-500">Monthly Avg</p>
-                <p className="font-black text-gray-800">{monthlyVitaminTrend.trend.average_monthly.toFixed(1)} units</p>
-              </div>
-              <div className="bg-gray-50 p-2 rounded-lg text-center">
-                <p className="text-gray-500">Trend</p>
-                <p className={`font-black flex items-center justify-center gap-1 ${monthlyVitaminTrend.trend.direction === 'up' ? 'text-green-600' : monthlyVitaminTrend.trend.direction === 'down' ? 'text-red-600' : 'text-gray-600'}`}>
-                  {monthlyVitaminTrend.trend.direction === 'up' && <TrendingUp size={12} />}
-                  {monthlyVitaminTrend.trend.direction === 'down' && <TrendingDown size={12} />}
-                  {monthlyVitaminTrend.trend.rate.toFixed(1)}%
-                </p>
-              </div>
-              <div className="bg-gray-50 p-2 rounded-lg text-center col-span-1">
-                <p className="text-gray-500">Next Month</p>
-                <p className="font-black text-purple-600">
-                  {monthlyVitaminTrend.forecast[0]?.forecast.toFixed(1) || '--'} units
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {vitaminForecast['Electrolytes'] && (
-              <VitaminCard 
-                vitamin={vitaminForecast['Electrolytes']}
-                name="Electrolytes"
-                icon={Droplets}
-                color="blue"
-                onNavigate={handleNavigateToExpenses}
-              />
-            )}
-            
-            {vitaminForecast['Biotin/Niacin/Riboflavin'] && (
-              <VitaminCard 
-                vitamin={vitaminForecast['Biotin/Niacin/Riboflavin']}
-                name="Biotin Complex"
-                icon={Beaker}
-                color="purple"
-                onNavigate={handleNavigateToExpenses}
-              />
-            )}
-            
-            {vitaminForecast['Multi V / Multivi Plus'] && (
-              <VitaminCard 
-                vitamin={vitaminForecast['Multi V / Multivi Plus']}
-                name="Multi V"
-                icon={Pill}
-                color="pink"
-                onNavigate={handleNavigateToExpenses}
-              />
-            )}
-            
-            {vitaminForecast['Vit ADE'] && (
-              <VitaminCard 
-                vitamin={vitaminForecast['Vit ADE']}
-                name="Vit ADE"
-                icon={SunIcon}
-                color="orange"
-                onNavigate={handleNavigateToExpenses}
-              />
-            )}
-          </div>
-
-          {(vitaminForecast['Electrolytes']?.status === 'critical' || 
-            vitaminForecast['Biotin/Niacin/Riboflavin']?.status === 'critical' || 
-            vitaminForecast['Multi V / Multivi Plus']?.status === 'critical' || 
-            vitaminForecast['Vit ADE']?.status === 'critical') && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <AlertTriangle size={20} className="text-red-500" />
-                <div>
-                  <p className="text-sm font-black text-red-800">Critical Vitamin Alert!</p>
-                  <p className="text-xs text-red-600">Some vitamins are running low. Order immediately.</p>
+              {showVitaminTips && (
+                <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 animate-fadeIn">
+                  <div className="flex items-start gap-2">
+                    <div className="p-1.5 bg-purple-100 rounded-md">
+                      <Info size={14} className="text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xs font-black text-purple-800 mb-1.5">Vitamin Insights</h4>
+                      <ul className="space-y-1 text-[10px]">
+                        <li className="flex items-start gap-1.5">
+                          <div className="w-1 h-1 bg-purple-600 rounded-full mt-1"></div>
+                          <span className="text-purple-700">Calculates needs based on previous batches.</span>
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <div className="w-1 h-1 bg-purple-600 rounded-full mt-1"></div>
+                          <span className="text-purple-700">Enter "Next Population" below to forecast.</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {/* NEXT BATCH PLANNER INPUT */}
+              <div className="mb-4 bg-gray-50 p-3 rounded-xl border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-3">
+                 <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-white rounded-md border border-gray-200 shadow-sm text-indigo-600">
+                        <Calculator size={16} />
+                    </div>
+                    <div>
+                        <h4 className="text-xs font-black text-gray-800">Next batch planner</h4>
+                    </div>
+                 </div>
+                 <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-300 focus-within:ring-1 focus-within:ring-purple-500">
+                    <Users size={14} className="text-gray-400 ml-1.5" />
+                    <input 
+                        type="text"
+                        className="w-24 p-1.5 text-xs font-bold text-gray-800 outline-none"
+                        value={getInputDisplayValue()}
+                        onChange={handlePopulationChange}
+                        placeholder="Heads"
+                    />
+                 </div>
               </div>
-              <button 
-                onClick={handleNavigateToExpenses}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
-              >
-                Order Now
-                <ArrowRight size={16} />
-              </button>
+
+              {/* Vitamin Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {vitaminForecast['Electrolytes'] && (
+                  <VitaminCard 
+                    vitamin={vitaminForecast['Electrolytes']}
+                    name="Electrolytes"
+                    icon={Droplets}
+                    color="blue"
+                    nextBatchPop={typeof nextBatchPop === 'number' ? nextBatchPop : 0}
+                    onNavigate={handleNavigateToExpenses}
+                  />
+                )}
+                
+                {vitaminForecast['Biotin/Niacin/Riboflavin'] && (
+                  <VitaminCard 
+                    vitamin={vitaminForecast['Biotin/Niacin/Riboflavin']}
+                    name="Biotin Complex"
+                    icon={Beaker}
+                    color="purple"
+                    nextBatchPop={typeof nextBatchPop === 'number' ? nextBatchPop : 0}
+                    onNavigate={handleNavigateToExpenses}
+                  />
+                )}
+                
+                {vitaminForecast['Multi V / Multivi Plus'] && (
+                  <VitaminCard 
+                    vitamin={vitaminForecast['Multi V / Multivi Plus']}
+                    name="Multi V"
+                    icon={Pill}
+                    color="pink"
+                    nextBatchPop={typeof nextBatchPop === 'number' ? nextBatchPop : 0}
+                    onNavigate={handleNavigateToExpenses}
+                  />
+                )}
+                
+                {vitaminForecast['Vit ADE'] && (
+                  <VitaminCard 
+                    vitamin={vitaminForecast['Vit ADE']}
+                    name="Vit ADE"
+                    icon={SunIcon}
+                    color="orange"
+                    nextBatchPop={typeof nextBatchPop === 'number' ? nextBatchPop : 0}
+                    onNavigate={handleNavigateToExpenses}
+                  />
+                )}
+
+                {vitaminForecast['Others'] && (
+                  <VitaminCard 
+                    vitamin={vitaminForecast['Others']}
+                    name="Other Vitamins"
+                    icon={FlaskConical}
+                    color="gray"
+                    nextBatchPop={typeof nextBatchPop === 'number' ? nextBatchPop : 0}
+                    onNavigate={handleNavigateToExpenses}
+                  />
+                )}
+              </div>
+
+              {/* Vitamin Critical Alert Banner */}
+              {(() => {
+                const criticalVits = Object.entries(vitaminForecast)
+                  .filter(([_, v]) => v && v.status === 'critical')
+                  .map(([k]) => k === 'Biotin/Niacin/Riboflavin' ? 'Biotin Complex' : k);
+
+                if (criticalVits.length > 0) {
+                  return (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between animate-pulse">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={18} className="text-red-500" />
+                        <div>
+                          <p className="text-xs font-black text-red-800">Critical Vitamin Alert!</p>
+                          <p className="text-[10px] text-red-600 font-medium leading-tight">
+                            {criticalVits.join(', ')} {criticalVits.length > 1 ? 'are' : 'is'} running low.
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={handleNavigateToExpenses}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold flex items-center gap-1.5 shadow-sm"
+                      >
+                        Add Now
+                        <ArrowRight size={12} />
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          ) : (
+            <div className="p-8 text-center">
+              <h3 className="text-base font-bold text-gray-400">No Vitamin Data Available</h3>
             </div>
           )}
         </div>
       )}
-
-      {/* CHARTS ROW - Expense Overview and History Comparison - ALWAYS SHOW THESE */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Expense Overview Pie Chart */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="p-2 bg-rose-50 rounded-lg">
-              <PieIcon size={18} className="text-rose-600" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">Expense Overview</h3>
-            </div>
-          </div>
-          <div className="h-80 w-full">
-            {expensePieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie 
-                    data={expensePieData} 
-                    cx="50%" 
-                    cy="50%" 
-                    innerRadius={60} 
-                    outerRadius={100} 
-                    paddingAngle={5} 
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}
-                  >
-                    {expensePieData.map((entry, index) => 
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    )}
-                  </Pie>
-                  <Tooltip formatter={(v) => formatCurrency(v)} />
-                  <Legend iconType="circle" />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                No expense data available
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* History Comparison Bar Chart */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <BarChart3 size={18} className="text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">History Comparison</h3>
-            </div>
-          </div>
-          <div className="h-80 w-full">
-            {historyComparisonData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={historyComparisonData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                  <YAxis axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => [formatCurrency(v), 'Net Income']} />
-                  <Bar dataKey="income" radius={[10, 10, 0, 0]} barSize={40}>
-                    {historyComparisonData.map((entry, index) => 
-                      <Cell key={`cell-${index}`} fill={entry.status === 'active' ? '#f97316' : '#3B0A0A'} />
-                    )}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                No historical data available
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* SETTINGS MODAL */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
-                <div className="bg-gray-900 p-4 text-white flex justify-between items-center">
-                    <h3 className="font-bold text-sm uppercase flex items-center gap-2"><Settings size={16}/> Configuration</h3>
-                    <button onClick={() => setShowSettingsModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={16}/></button>
+            <div className="bg-white w-full max-w-xs rounded-xl shadow-2xl overflow-hidden">
+                <div className="bg-gray-900 p-3 text-white flex justify-between items-center">
+                    <h3 className="font-bold text-xs uppercase flex items-center gap-1.5"><Settings size={14}/> Config</h3>
+                    <button onClick={() => setShowSettingsModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X size={14}/></button>
                 </div>
-                <div className="p-6 space-y-4">
+                <div className="p-4 space-y-3">
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Starting Population</label>
-                        <input type="number" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Starting Population</label>
+                        <input type="number" className="w-full p-2 border border-gray-300 rounded-md text-xs font-bold text-gray-800 focus:ring-1 focus:ring-orange-500 outline-none" 
                             value={settings.population} onChange={(e) => setSettings({...settings, population: e.target.value})} />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Number of Pens</label>
-                        <input type="number" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Number of Pens</label>
+                        <input type="number" className="w-full p-2 border border-gray-300 rounded-md text-xs font-bold text-gray-800 focus:ring-1 focus:ring-orange-500 outline-none" 
                             value={settings.pens} onChange={(e) => setSettings({...settings, pens: e.target.value})} />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Avg Starting Weight (g)</label>
-                        <input type="number" step="0.1" className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none" 
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Avg Starting Weight (g)</label>
+                        <input type="number" step="0.1" className="w-full p-2 border border-gray-300 rounded-md text-xs font-bold text-gray-800 focus:ring-1 focus:ring-orange-500 outline-none" 
                             value={settings.weight} onChange={(e) => setSettings({...settings, weight: e.target.value})} />
-                        <p className="text-[10px] text-gray-400 mt-1">Default: 33g - 50g</p>
                     </div>
-                    <button onClick={handleUpdateSettings} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                        <Save size={18} /> Save Configuration
+                    <button onClick={handleUpdateSettings} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors mt-2">
+                        <Save size={14} /> Save
                     </button>
                 </div>
             </div>
@@ -1628,18 +1801,18 @@ const RealDashboard = ({ onNavigate }) => {
       {/* COMPARE MODAL */}
       {showCompareModal && previousBatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
-                <div className="bg-red-900 p-4 text-white flex justify-between items-center">
-                  <h3 className="font-bold text-lg">Batch Comparison</h3>
-                  <button onClick={() => setShowCompareModal(false)}><X size={20}/></button>
+            <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl overflow-hidden">
+                <div className="bg-red-900 p-3 text-white flex justify-between items-center">
+                  <h3 className="font-bold text-sm">Batch Comparison</h3>
+                  <button onClick={() => setShowCompareModal(false)}><X size={16}/></button>
                 </div>
-                <div className="p-6">
-                    <div className="grid grid-cols-3 text-xs font-bold text-gray-400 border-b pb-2 mb-2">
+                <div className="p-4">
+                    <div className="grid grid-cols-3 text-[10px] font-bold text-gray-400 border-b pb-1.5 mb-2">
                       <span>Metric</span>
                       <span className="text-center">Current</span>
                       <span className="text-center">Previous</span>
                     </div>
-                    <div className="space-y-4 text-sm">
+                    <div className="space-y-3 text-xs">
                         <div className="grid grid-cols-3">
                           <span>Pop.</span>
                           <span className="text-center font-black">{currentMetrics.population}</span>
@@ -1650,6 +1823,38 @@ const RealDashboard = ({ onNavigate }) => {
                           <span className="text-center font-black">{formatCurrency(currentMetrics.sales)}</span>
                           <span className="text-center">{formatCurrency(prevMetrics.sales)}</span>
                         </div>
+                        <div className="grid grid-cols-3">
+                          <span>Expenses</span>
+                          <span className="text-center font-black">{formatCurrency(currentMetrics.expenses)}</span>
+                          <span className="text-center">{formatCurrency(prevMetrics.expenses)}</span>
+                        </div>
+                        <div className="grid grid-cols-3">
+                          <span>Profit</span>
+                          <span className="text-center font-black">{formatCurrency(currentMetrics.profit)}</span>
+                          <span className="text-center">{formatCurrency(prevMetrics.profit)}</span>
+                        </div>
+                        <div className="grid grid-cols-3">
+                          <span>Mortality</span>
+                          <span className="text-center font-black">{currentMetrics.mortality}</span>
+                          <span className="text-center">{prevMetrics.mortality}</span>
+                        </div>
+                        <div className="grid grid-cols-3">
+                          <span>Avg Weight</span>
+                          <span className="text-center font-black">{currentMetrics.avgWeight}g</span>
+                          <span className="text-center">{prevMetrics.avgWeight}g</span>
+                        </div>
+                    </div>
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-[9px] font-bold text-gray-500 mb-1">SUMMARY</p>
+                      <p className="text-xs">
+                        {currentMetrics.profit > prevMetrics.profit ? (
+                          <span className="text-green-600 font-black">↑ Improved by {formatCurrency(currentMetrics.profit - prevMetrics.profit)}</span>
+                        ) : currentMetrics.profit < prevMetrics.profit ? (
+                          <span className="text-red-600 font-black">↓ Decreased by {formatCurrency(prevMetrics.profit - currentMetrics.profit)}</span>
+                        ) : (
+                          <span className="text-gray-600 font-black">Similar to last batch</span>
+                        )}
+                      </p>
                     </div>
                 </div>
             </div>
@@ -1660,44 +1865,77 @@ const RealDashboard = ({ onNavigate }) => {
 };
 
 // Vitamin Card Component
-const VitaminCard = ({ vitamin, name, icon: Icon, color, onNavigate }) => {
+const VitaminCard = ({ vitamin, name, icon: Icon, color, nextBatchPop, onNavigate }) => {
   const getColorClasses = () => {
+    if (vitamin.status === 'critical') {
+      return {
+        bg: 'bg-red-50',
+        border: 'border-red-300',
+        gradient: 'from-red-50 to-red-100',
+        iconBg: 'bg-red-200',
+        iconColor: 'text-red-700',
+        progress: '#ef4444',
+        button: 'bg-red-600 hover:bg-red-700',
+        textColor: 'text-red-800',
+        badge: 'bg-red-600'
+      };
+    }
+    
     switch(color) {
       case 'blue': return {
         bg: 'bg-blue-50',
         border: 'border-blue-300',
         gradient: 'from-blue-50 to-blue-100',
-        iconBg: vitamin.status === 'critical' ? 'bg-red-200' : vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-blue-200',
-        iconColor: vitamin.status === 'critical' ? 'text-red-700' : vitamin.status === 'warning' ? 'text-amber-700' : 'text-blue-700',
-        progress: vitamin.status === 'critical' ? '#ef4444' : vitamin.status === 'warning' ? '#f59e0b' : '#3b82f6',
-        button: 'bg-blue-600 hover:bg-blue-700'
+        iconBg: vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-blue-200',
+        iconColor: vitamin.status === 'warning' ? 'text-amber-700' : 'text-blue-700',
+        progress: vitamin.status === 'warning' ? '#f59e0b' : '#3b82f6',
+        button: vitamin.status === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700',
+        textColor: vitamin.status === 'warning' ? 'text-amber-800' : 'text-blue-800',
+        badge: vitamin.status === 'warning' ? 'bg-amber-600' : 'bg-blue-600'
       };
       case 'purple': return {
         bg: 'bg-purple-50',
         border: 'border-purple-300',
         gradient: 'from-purple-50 to-purple-100',
-        iconBg: vitamin.status === 'critical' ? 'bg-red-200' : vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-purple-200',
-        iconColor: vitamin.status === 'critical' ? 'text-red-700' : vitamin.status === 'warning' ? 'text-amber-700' : 'text-purple-700',
-        progress: vitamin.status === 'critical' ? '#ef4444' : vitamin.status === 'warning' ? '#f59e0b' : '#8b5cf6',
-        button: 'bg-purple-600 hover:bg-purple-700'
+        iconBg: vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-purple-200',
+        iconColor: vitamin.status === 'warning' ? 'text-amber-700' : 'text-purple-700',
+        progress: vitamin.status === 'warning' ? '#f59e0b' : '#8b5cf6',
+        button: vitamin.status === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700',
+        textColor: vitamin.status === 'warning' ? 'text-amber-800' : 'text-purple-800',
+        badge: vitamin.status === 'warning' ? 'bg-amber-600' : 'bg-purple-600'
       };
       case 'pink': return {
         bg: 'bg-pink-50',
         border: 'border-pink-300',
         gradient: 'from-pink-50 to-pink-100',
-        iconBg: vitamin.status === 'critical' ? 'bg-red-200' : vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-pink-200',
-        iconColor: vitamin.status === 'critical' ? 'text-red-700' : vitamin.status === 'warning' ? 'text-amber-700' : 'text-pink-700',
-        progress: vitamin.status === 'critical' ? '#ef4444' : vitamin.status === 'warning' ? '#f59e0b' : '#ec4899',
-        button: 'bg-pink-600 hover:bg-pink-700'
+        iconBg: vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-pink-200',
+        iconColor: vitamin.status === 'warning' ? 'text-amber-700' : 'text-pink-700',
+        progress: vitamin.status === 'warning' ? '#f59e0b' : '#ec4899',
+        button: vitamin.status === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-pink-600 hover:bg-pink-700',
+        textColor: vitamin.status === 'warning' ? 'text-amber-800' : 'text-pink-800',
+        badge: vitamin.status === 'warning' ? 'bg-amber-600' : 'bg-pink-600'
       };
       case 'orange': return {
         bg: 'bg-orange-50',
         border: 'border-orange-300',
         gradient: 'from-orange-50 to-orange-100',
-        iconBg: vitamin.status === 'critical' ? 'bg-red-200' : vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-orange-200',
-        iconColor: vitamin.status === 'critical' ? 'text-red-700' : vitamin.status === 'warning' ? 'text-amber-700' : 'text-orange-700',
-        progress: vitamin.status === 'critical' ? '#ef4444' : vitamin.status === 'warning' ? '#f59e0b' : '#f97316',
-        button: 'bg-orange-600 hover:bg-orange-700'
+        iconBg: vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-orange-200',
+        iconColor: vitamin.status === 'warning' ? 'text-amber-700' : 'text-orange-700',
+        progress: vitamin.status === 'warning' ? '#f59e0b' : '#f97316',
+        button: vitamin.status === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-orange-600 hover:bg-orange-700',
+        textColor: vitamin.status === 'warning' ? 'text-amber-800' : 'text-orange-800',
+        badge: vitamin.status === 'warning' ? 'bg-amber-600' : 'bg-orange-600'
+      };
+      case 'gray': return {
+        bg: 'bg-gray-50',
+        border: 'border-gray-300',
+        gradient: 'from-gray-50 to-gray-100',
+        iconBg: vitamin.status === 'warning' ? 'bg-amber-200' : 'bg-gray-200',
+        iconColor: vitamin.status === 'warning' ? 'text-amber-700' : 'text-gray-700',
+        progress: vitamin.status === 'warning' ? '#f59e0b' : '#6b7280',
+        button: vitamin.status === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-gray-600 hover:bg-gray-700',
+        textColor: vitamin.status === 'warning' ? 'text-amber-800' : 'text-gray-800',
+        badge: vitamin.status === 'warning' ? 'bg-amber-600' : 'bg-gray-600'
       };
       default: return {
         bg: 'bg-gray-50',
@@ -1706,65 +1944,86 @@ const VitaminCard = ({ vitamin, name, icon: Icon, color, onNavigate }) => {
         iconBg: 'bg-gray-200',
         iconColor: 'text-gray-700',
         progress: '#6b7280',
-        button: 'bg-gray-600 hover:bg-gray-700'
+        button: 'bg-gray-600 hover:bg-gray-700',
+        textColor: 'text-gray-800',
+        badge: 'bg-gray-600'
       };
     }
   };
 
   const colors = getColorClasses();
+  const nextBatchPrediction = (vitamin.dosagePerBird * nextBatchPop).toFixed(1);
+  
+  const getStatusBadge = () => {
+    switch(vitamin.status) {
+      case 'critical': return 'CRITICAL';
+      case 'warning': return 'WARN';
+      case 'excess': return 'SURPLUS';
+      case 'good': return 'GOOD';
+      default: return 'OK';
+    }
+  };
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg bg-gradient-to-br ${colors.gradient} border-${colors.border}`}>
-      <div className="p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`p-2.5 rounded-xl ${colors.iconBg}`}>
-            <Icon size={22} className={colors.iconColor} />
+    <div className={`relative overflow-hidden rounded-xl border transition-all duration-300 ${
+      vitamin.status === 'critical' ? 'border-red-400 shadow-md shadow-red-100' : 
+      vitamin.status === 'warning' ? 'border-amber-400' : 
+      `border-${colors.border}`
+    } bg-gradient-to-br ${colors.gradient}`}>
+      <div className={`absolute top-2 right-2 ${vitamin.status === 'critical' ? 'bg-red-600' : colors.badge} text-white text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider`}>
+        {getStatusBadge()}
+      </div>
+
+      <div className="p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={`p-1.5 rounded-lg ${colors.iconBg}`}>
+            <Icon size={16} className={colors.iconColor} />
           </div>
           <div>
-            <h4 className="font-black text-base text-gray-800">{name}</h4>
-            <p className="text-[10px] text-gray-500">Based on historical usage</p>
+            <h4 className={`font-black text-xs ${colors.textColor}`}>{name}</h4>
+            <p className="text-[9px] text-gray-500">Need/bird: {vitamin.dosagePerBird.toFixed(3)} {vitamin.unit}</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between mb-4">
-          <div className="relative w-16 h-16">
-            <svg className="w-16 h-16 transform -rotate-90">
-              <circle cx="32" cy="32" r="28" stroke="#e5e7eb" strokeWidth="6" fill="none" />
+        <div className="flex items-center justify-between mb-3">
+          <div className="relative w-12 h-12">
+            <svg className="w-12 h-12 transform -rotate-90">
+              <circle cx="24" cy="24" r="20" stroke="#e5e7eb" strokeWidth="4" fill="none" />
               <circle
-                cx="32"
-                cy="32"
-                r="28"
+                cx="24"
+                cy="24"
+                r="20"
                 stroke={colors.progress}
-                strokeWidth="6"
+                strokeWidth="4"
                 fill="none"
                 strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 28}`}
-                strokeDashoffset={`${2 * Math.PI * 28 * (1 - vitamin.percentage / 100)}`}
+                strokeDasharray={`${2 * Math.PI * 20}`}
+                strokeDashoffset={`${2 * Math.PI * 20 * (1 - vitamin.percentage / 100)}`}
                 className="transition-all duration-500"
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-black">{Math.round(vitamin.percentage)}%</span>
+              <span className="text-[10px] font-black">{Math.round(vitamin.percentage)}%</span>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-black text-gray-800">{vitamin.used.toFixed(1)}<span className="text-xs font-normal text-gray-500 ml-1">{vitamin.unit}</span></p>
-            <p className="text-xs text-gray-500">of {vitamin.required.toFixed(1)} {vitamin.unit}</p>
+            <p className="text-lg font-black text-gray-800">{vitamin.used.toFixed(1)}<span className="text-[9px] font-normal text-gray-500 ml-0.5">{vitamin.unit}</span></p>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">of {vitamin.required.toFixed(1)} req.</p>
           </div>
         </div>
 
-        <div className={`p-3 rounded-xl mb-3 ${
-          vitamin.status === 'critical' ? 'bg-red-200/50' :
-          vitamin.status === 'warning' ? 'bg-amber-200/50' :
-          vitamin.status === 'excess' ? 'bg-blue-200/50' :
-          'bg-green-200/50'
+        <div className={`p-2 rounded-lg mb-2 ${
+          vitamin.status === 'critical' ? 'bg-red-200/70 border border-red-300' :
+          vitamin.status === 'warning' ? 'bg-amber-200/70 border border-amber-300' :
+          vitamin.status === 'excess' ? 'bg-blue-200/70 border border-blue-300' :
+          'bg-green-200/70 border border-green-300'
         }`}>
-          <div className="flex items-start gap-2">
-            {vitamin.status === 'critical' && <AlertTriangle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />}
-            {vitamin.status === 'warning' && <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />}
-            {vitamin.status === 'good' && <CheckCircle size={16} className="text-green-600 flex-shrink-0 mt-0.5" />}
-            {vitamin.status === 'excess' && <CheckCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />}
-            <p className={`text-xs font-bold ${
+          <div className="flex items-start gap-1.5">
+            {vitamin.status === 'critical' && <AlertTriangle size={12} className="text-red-600 flex-shrink-0 mt-0.5" />}
+            {vitamin.status === 'warning' && <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />}
+            {vitamin.status === 'good' && <CheckCircle size={12} className="text-green-600 flex-shrink-0 mt-0.5" />}
+            {vitamin.status === 'excess' && <CheckCircle size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />}
+            <p className={`text-[9px] font-bold leading-tight ${
               vitamin.status === 'critical' ? 'text-red-700' :
               vitamin.status === 'warning' ? 'text-amber-700' :
               vitamin.status === 'excess' ? 'text-blue-700' :
@@ -1775,30 +2034,31 @@ const VitaminCard = ({ vitamin, name, icon: Icon, color, onNavigate }) => {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs mb-3">
-          <span className="text-gray-500 font-medium">Next batch forecast:</span>
-          <span className="font-black text-gray-800">{vitamin.nextMonth.toFixed(1)} {vitamin.unit}</span>
+        <div className="mt-1 mb-2 bg-white/80 p-1.5 rounded-md border border-gray-200">
+            <div className="flex justify-between items-center text-[9px]">
+                <span className="text-gray-500 font-bold uppercase tracking-wide">Next ({nextBatchPop} hd)</span>
+                <span className={`font-black ${vitamin.status === 'critical' ? 'text-red-600' : 'text-gray-800'}`}>
+                  {nextBatchPrediction} {vitamin.unit}
+                </span>
+            </div>
+            <div className="w-full bg-gray-200 h-1 mt-1 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full ${
+                    vitamin.status === 'critical' ? 'bg-red-500' :
+                    vitamin.status === 'warning' ? 'bg-amber-500' :
+                    'bg-gray-400'
+                  }`} 
+                  style={{ width: '100%' }}
+                ></div>
+            </div>
         </div>
-
-        {vitamin.trend !== 0 && (
-          <div className="flex items-center gap-1 mb-3">
-            {vitamin.trend > 0 ? (
-              <TrendingUp size={14} className="text-green-600" />
-            ) : (
-              <TrendingDown size={14} className="text-red-600" />
-            )}
-            <span className={`text-[10px] font-bold ${vitamin.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {Math.abs(vitamin.trend).toFixed(1)}% vs last month
-            </span>
-          </div>
-        )}
 
         <button 
           onClick={onNavigate}
-          className={`w-full ${colors.button} text-white py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors`}
+          className={`w-full ${colors.button} text-white py-1.5 rounded-md text-[10px] font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm`}
         >
-          <ShoppingCart size={14} />
-          Buy More
+          <Plus size={12} />
+          {vitamin.status === 'critical' ? 'ADD NOW' : 'Add More'}
         </button>
       </div>
     </div>

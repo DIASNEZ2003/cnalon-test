@@ -11,7 +11,6 @@ import BatchControl from "../Dashboard/BatchControl";
 import Records from "../Dashboard/Records";
 import Expenses from "../Dashboard/Expenses";
 import Sales from "../Dashboard/Sales";
-import Personal from "../Dashboard/Personal";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("Dashboard");
@@ -41,8 +40,7 @@ const Dashboard = () => {
   const navItems = [
     { name: "Dashboard", icon: "/dashboard.png" },
     { name: "Batch Control", icon: "/batch.png" },      
-    { name: "Manage Technicians", icon: "/user.png" }, 
-    { name: "Manage Personal", icon: "/farmer.png" }, 
+    { name: "Manage Users", icon: "/user.png" }, // Handles both Technicians and Personnel now
     { name: "Sales", icon: "/sales.png" },             
     { name: "Expenses", icon: "/expenses.png" },       
     { name: "Records", icon: "/folder.png" },          
@@ -251,16 +249,16 @@ const Dashboard = () => {
 
       {/* --- MAIN CONTENT AREA --- */}
       <main className="flex-1 flex flex-col overflow-hidden relative bg-gray-50">
-        <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8 z-10 flex-shrink-0 border-b border-gray-100">
-          <h1 className="text-2xl font-extrabold text-red-900 tracking-tight">{activeTab}</h1>
+        <header className="h-12 bg-white shadow-sm flex items-center justify-between px-6 z-10 flex-shrink-0 border-b border-gray-100">
+          <h1 className="text-lg font-extrabold text-red-900 tracking-tight">{activeTab}</h1>
 
           {/* REAL-TIME WEATHER DISPLAY */}
           {weatherData.temp !== "--" && (
-            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border shadow-sm transition-colors duration-500 ${weatherUI.bg}`}>
-              <span className="text-xl animate-bounce-slow">{weatherUI.icon}</span>
+            <div className={`flex items-center space-x-2 px-2 py-1 rounded-lg border shadow-sm transition-colors duration-500 ${weatherUI.bg}`}>
+              <span className="text-sm animate-bounce-slow">{weatherUI.icon}</span>
               <div className="flex flex-col">
-                <span className={`text-[9px] font-bold uppercase tracking-tight ${weatherUI.color}`}>{weatherUI.label}</span>
-                <span className={`font-bold text-sm leading-none ${weatherData.isDay === 0 ? 'text-white' : 'text-gray-800'}`}>
+                <span className={`text-[8px] font-bold uppercase tracking-tight ${weatherUI.color}`}>{weatherUI.label}</span>
+                <span className={`font-bold text-xs leading-none ${weatherData.isDay === 0 ? 'text-white' : 'text-gray-800'}`}>
                   {weatherData.temp}{weatherData.unit}
                 </span>
               </div>
@@ -268,11 +266,10 @@ const Dashboard = () => {
           )}
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 animate-fade-in-down">
+        <div className="flex-1 overflow-y-auto p-4 animate-fade-in-down">
            {activeTab === "Dashboard" && <RealDashboard onNavigate={setActiveTab} />}
           {activeTab === "Batch Control" && <BatchControl />}
-          {activeTab === "Manage Technicians" && <User />} 
-          {activeTab === "Manage Personal" && <Personal />} 
+          {activeTab === "Manage Users" && <User />} 
           {activeTab === "Sales" && <Sales />}
           {activeTab === "Expenses" && <Expenses />}
           {activeTab === "Records" && <Records />}
@@ -298,7 +295,7 @@ const Dashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl p-8 w-80 text-center shadow-2xl">
             <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"></path></svg>
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Success!</h3>
             <p className="text-gray-500 mb-6">{modalMessage}</p>

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Search, User, Package, Pill, HeartPulse, Scale, ClipboardList, Layers, Banknote, 
-  TrendingUp, TrendingDown, Users, CheckCircle, Database, Wallet, Filter, Calendar
+  Search, User, Package, Pill, HeartPulse, Scale, FileText, 
+  TrendingUp, TrendingDown, Users, Database, Wallet, Filter, Download, DollarSign
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
 import { ref, onValue } from 'firebase/database';
 import { onAuthStateChanged } from "firebase/auth";
+import * as XLSX from 'xlsx'; 
 
 const Records = () => {
     const [loading, setLoading] = useState(true);
@@ -61,6 +62,8 @@ const Records = () => {
 
     const batchStats = useMemo(() => {
         let sales = 0, expenses = 0, feed = 0, vits = 0, mort = 0, harvested = 0, startPop = 0;
+        
+        // This filters the stats to ONLY show the currently selected batch
         const targetBatches = selectedBatch === "All Batches" 
             ? Object.values(rawBatches || {}) 
             : Object.values(rawBatches || {}).filter(b => b.batchName === selectedBatch);
@@ -122,154 +125,225 @@ const Records = () => {
         return matchesType && matchesBatch && searchStr.includes(searchQuery.toLowerCase());
     });
 
-    if (loading) return <div className="p-10 font-black text-[#3B0A0A] text-xl tracking-widest animate-pulse uppercase">Syncing Records...</div>;
+    const handleExportExcel = () => {
+        // This ensures the Excel file ONLY contains the batch selected in the dropdown!
+        const targetBatches = selectedBatch === "All Batches" 
+            ? Object.values(rawBatches || {}) 
+            : Object.values(rawBatches || {}).filter(b => b.batchName === selectedBatch);
+
+        const feedsData = [];
+        const vitaminsData = [];
+        const mortalityData = [];
+        const expensesData = [];
+        const salesData = [];
+
+        targetBatches.forEach(batch => {
+            const bName = batch.batchName || "Unknown Batch";
+            if (batch.feed_logs) Object.entries(batch.feed_logs).forEach(([date, log]) => feedsData.push({ "Batch": bName, "Date": date, "AM (kg)": Number(log.am || 0), "PM (kg)": Number(log.pm || 0), "Total (kg)": Number(log.am || 0) + Number(log.pm || 0), "Updated By": log.updaterName || "System" }));
+            if (batch.daily_vitamin_logs) Object.entries(batch.daily_vitamin_logs).forEach(([date, log]) => vitaminsData.push({ "Batch": bName, "Date": date, "AM Dose": Number(log.am_amount || 0), "PM Dose": Number(log.pm_amount || 0), "Total Dose": Number(log.am_amount || 0) + Number(log.pm_amount || 0), "Updated By": log.updaterName || "System" }));
+            if (batch.mortality_logs) Object.entries(batch.mortality_logs).forEach(([date, log]) => mortalityData.push({ "Batch": bName, "Date": date, "AM Deaths": Number(log.am || 0), "PM Deaths": Number(log.pm || 0), "Total Deaths": Number(log.am || 0) + Number(log.pm || 0), "Updated By": log.updaterName || "System" }));
+            if (batch.expenses) Object.values(batch.expenses).forEach(exp => expensesData.push({ "Batch": bName, "Date": exp.date || "", "Category": exp.category || "", "Item Description": exp.itemName || exp.description || "", "Quantity": Number(exp.quantity || 0), "Amount (PHP)": Number(exp.amount || 0) }));
+            if (batch.sales) Object.values(batch.sales).forEach(sale => salesData.push({ "Batch": bName, "Date": sale.dateOfPurchase || "", "Buyer Name": sale.buyerName || "", "Heads Sold": Number(sale.quantity || 0), "Total Amount (PHP)": Number(sale.totalAmount || 0) }));
+        });
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(feedsData.length ? feedsData : [{Message: "No Data"}]), "Feeds");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vitaminsData.length ? vitaminsData : [{Message: "No Data"}]), "Vitamins");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mortalityData.length ? mortalityData : [{Message: "No Data"}]), "Mortality");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expensesData.length ? expensesData : [{Message: "No Data"}]), "Expenses");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesData.length ? salesData : [{Message: "No Data"}]), "Sales");
+
+        XLSX.writeFile(wb, `Farm_Records_${selectedBatch === "All Batches" ? "All" : selectedBatch.replace(/\s+/g, '_')}.xlsx`);
+    };
+
+    const getTypeStyles = (type) => {
+        switch(type) {
+            case 'Feed': return { icon: Package, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' };
+            case 'Vitamins': return { icon: Pill, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-100' };
+            case 'Mortality': return { icon: HeartPulse, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' };
+            case 'Weight': return { icon: Scale, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' };
+            case 'Sales': return { icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' };
+            default: return { icon: FileText, color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-100' };
+        }
+    };
+
+    if (loading) return (
+        <div className="flex flex-col items-center justify-center h-full w-full bg-gray-50">
+            <div className="w-8 h-8 border-4 border-red-900 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="font-bold text-[#3B0A0A] text-xs tracking-widest uppercase animate-pulse">Syncing Records...</p>
+        </div>
+    );
 
     return (
-        <div className="bg-gray-50 h-full w-full p-6 animate-fade-in font-sans text-gray-800">
-            
-            {/* --- TOP HEADER & SEARCH BAR --- */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex items-center gap-4 flex-1">
-                    <div className="p-2.5 bg-red-50 rounded-xl">
-                        <ClipboardList size={22} className="text-[#3B0A0A]" />
+        <div className="bg-gray-50 min-h-full w-full p-3 md:p-4 animate-fade-in font-sans text-gray-800 flex flex-col gap-4">
+
+            {/* --- COMPACT TOP ANALYTICS CARDS (6 CARDS) --- */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-emerald-50 rounded-md text-emerald-600"><TrendingUp size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Revenue</span>
                     </div>
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <span className="text-base font-black text-gray-800">₱{batchStats.sales.toLocaleString()}</span>
+                </div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-rose-50 rounded-md text-rose-600"><TrendingDown size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expenses</span>
+                    </div>
+                    <span className="text-base font-black text-gray-800">₱{batchStats.expenses.toLocaleString()}</span>
+                </div>
+                
+                {/* NET PROFIT CARD */}
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-blue-50 rounded-md text-blue-600"><Wallet size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Net Profit</span>
+                    </div>
+                    <span className={`text-base font-black ${batchStats.profit >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                        ₱{batchStats.profit.toLocaleString()}
+                    </span>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-orange-50 rounded-md text-orange-600"><Database size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Feeds</span>
+                    </div>
+                    <span className="text-base font-black text-gray-800">{batchStats.feed.toFixed(1)} <span className="text-[10px] font-medium text-gray-400">kg</span></span>
+                </div>
+                {/* VITAMINS CARD */}
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-purple-50 rounded-md text-purple-600"><Pill size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Vitamins</span>
+                    </div>
+                    <span className="text-base font-black text-gray-800">{batchStats.vits.toFixed(1)} <span className="text-[10px] font-medium text-gray-400">dose</span></span>
+                </div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className="p-1 bg-red-50 rounded-md text-red-600"><HeartPulse size={12}/></div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Mortality</span>
+                    </div>
+                    <span className="text-base font-black text-gray-800">{batchStats.mort} <span className="text-[10px] font-medium text-gray-400">heads</span></span>
+                </div>
+            </div>
+
+            {/* --- COMPACT CONTROLS / FILTERS --- */}
+            <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3">
+                <div className="flex flex-col md:flex-row gap-3">
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                         <input 
                             type="text" 
-                            placeholder="Search historical logs..." 
-                            className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-red-900 outline-none text-xs transition-all font-medium"
+                            placeholder="Search records by batch, category, or user..." 
+                            className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-100 rounded-lg focus:ring-1 focus:ring-red-900 outline-none text-xs transition-all font-bold text-gray-700"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                        <Filter size={14} className="text-gray-400" />
+                    {/* Batch Dropdown */}
+                    <div className="relative md:w-48 flex-shrink-0">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                         <select 
-                            className="bg-transparent text-[11px] font-bold outline-none cursor-pointer" 
+                            className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-100 rounded-lg focus:ring-1 focus:ring-red-900 outline-none text-xs transition-all font-bold text-gray-700 appearance-none cursor-pointer" 
                             value={selectedBatch} 
                             onChange={(e) => setSelectedBatch(e.target.value)}
                         >
                             {batchOptions.map(b => <option key={b} value={b}>{b}</option>)}
                         </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 text-[10px]">▼</div>
                     </div>
-                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                        <Layers size={14} className="text-gray-400" />
-                        <select 
-                            className="bg-transparent text-[11px] font-bold outline-none cursor-pointer"
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value)}
+                    {/* EXCEL EXPORT BUTTON */}
+                    <button 
+                        onClick={handleExportExcel}
+                        className="flex items-center justify-center gap-1.5 bg-[#107c41] hover:bg-[#0c5e31] text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 flex-shrink-0"
+                    >
+                        <Download size={14} /> Export Excel
+                    </button>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mr-1 flex-shrink-0">Cat:</span>
+                    {FILTER_TYPES.map(type => (
+                        <button
+                            key={type}
+                            onClick={() => setFilterType(type)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all duration-200 border flex-shrink-0 ${
+                                filterType === type 
+                                ? 'bg-[#3B0A0A] text-white border-[#3B0A0A] shadow-sm' 
+                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                            }`}
                         >
-                            {FILTER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                    </div>
+                            {type}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                
-                {/* --- MAIN DATA TABLE --- */}
-                <div className="xl:col-span-3 space-y-6">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50/50 border-b border-gray-100">
-                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Entry Details</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Category</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Performed By</th>
-                                        <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Date</th>
+            {/* --- COMPACT DATA TABLE --- */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col min-h-[300px]">
+                <div className="overflow-x-auto flex-1">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="sticky top-0 bg-white shadow-sm z-10">
+                            <tr className="bg-gray-50/80 border-b border-gray-100">
+                                <th className="px-4 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest w-1/3">Entry Details</th>
+                                <th className="px-4 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Category</th>
+                                <th className="px-4 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Recorded By</th>
+                                <th className="px-4 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-widest text-right">Date Logged</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filteredData.length === 0 ? (
+                                <tr>
+                                    <td colSpan="4" className="py-16 text-center">
+                                        <FileText size={32} className="mx-auto text-gray-200 mb-2" />
+                                        <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">No matching records found</p>
+                                    </td>
+                                </tr>
+                            ) : filteredData.map((item) => {
+                                const userImg = getUserProfileImage(item.user);
+                                const style = getTypeStyles(item.type);
+                                const Icon = style.icon || FileText;
+
+                                return (
+                                    <tr key={item.id} className="hover:bg-gray-50/60 transition-colors group">
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${style.bg} ${style.color} ${style.border}`}>
+                                                    <Icon size={14} />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">{item.batchName}</span>
+                                                    <span className="text-xs font-black text-gray-800 tracking-tight">{item.subtitle}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${style.bg} ${style.color} ${style.border}`}>
+                                                {item.type}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-5 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center flex-shrink-0">
+                                                    {userImg ? <img src={userImg} className="w-full h-full object-cover" alt="User" /> : <User size={10} className="text-gray-400" />}
+                                                </div>
+                                                <span className="text-[10px] font-bold text-gray-600">@{item.user}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <span className="text-[10px] font-bold text-gray-800">
+                                                {item.date}
+                                            </span>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {filteredData.length === 0 ? (
-                                        <tr><td colSpan="4" className="py-20 text-center text-gray-300 text-xs font-medium uppercase tracking-widest">No matching history found</td></tr>
-                                    ) : filteredData.map((item) => {
-                                        const userImg = getUserProfileImage(item.user);
-                                        return (
-                                            <tr key={item.id} className="hover:bg-gray-50/40 transition-colors group">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] text-red-900 font-bold uppercase tracking-wider mb-0.5">{item.batchName}</span>
-                                                        <span className="text-sm font-black text-gray-800 tracking-tight uppercase">{item.subtitle}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${
-                                                        item.type === 'Sales' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'
-                                                    }`}>
-                                                        {item.type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center">
-                                                            {userImg ? <img src={userImg} className="w-full h-full object-cover" /> : <User size={14} className="text-gray-400" />}
-                                                        </div>
-                                                        <span className="text-xs font-bold text-gray-600">@{item.user}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <span className="text-[10px] text-gray-400 font-bold uppercase">{item.date}</span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- ANALYTICS SIDEBAR --- */}
-                <div className="xl:col-span-1">
-                    <div className="sticky top-6 space-y-6">
-                        <div className="bg-[#3B0A0A] p-6 rounded-[32px] shadow-2xl text-white border border-white/5 relative overflow-hidden">
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-1 text-orange-400 uppercase font-black text-[9px] tracking-widest">
-                                    <TrendingUp size={12}/> Analysis
-                                </div>
-                                <h1 className="text-xl font-black mb-6 tracking-tighter uppercase">{selectedBatch}</h1>
-                                
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                        <div className="flex items-center gap-2"><TrendingUp size={16} className="text-emerald-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Revenue</span></div>
-                                        <span className="text-base font-black text-emerald-400">₱{batchStats.sales.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-end border-b border-white/5 pb-2">
-                                        <div className="flex items-center gap-2"><TrendingDown size={16} className="text-rose-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Cost</span></div>
-                                        <span className="text-base font-black text-rose-400">₱{batchStats.expenses.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-end border-b border-white/10 pb-2">
-                                        <div className="flex items-center gap-2"><Wallet size={16} className="text-orange-400"/> <span className="text-[10px] font-bold text-gray-400 uppercase">Net Profit</span></div>
-                                        <span className="text-lg font-black text-white">₱{batchStats.profit.toLocaleString()}</span>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-3 pt-2">
-                                        <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                            <Database size={14} className="text-orange-300 mb-1"/>
-                                            <p className="text-[8px] font-black text-gray-500 uppercase">Feeds</p>
-                                            <p className="text-xs font-black">{batchStats.feed.toFixed(1)}kg</p>
-                                        </div>
-                                        <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex flex-col items-center text-center">
-                                            <HeartPulse size={14} className="text-red-400 mb-1"/>
-                                            <p className="text-[8px] font-black text-gray-500 uppercase">Deaths</p>
-                                            <p className="text-xs font-black text-red-400">{batchStats.mort}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 bg-orange-500/10 p-4 rounded-3xl border border-orange-500/20 text-center">
-                                        <Users size={20} className="mx-auto text-orange-400 mb-1"/>
-                                        <p className="text-[9px] font-black text-orange-200 uppercase tracking-widest">Total Stocking</p>
-                                        <p className="text-2xl font-black text-white">{batchStats.startPop}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
             

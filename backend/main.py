@@ -66,6 +66,7 @@ class UserRegisterSchema(BaseModel):
     lastName: str
     username: str
     password: str
+    role: Optional[str] = "user" # ADDED: Allow backend to accept the role from frontend
 
 class MessageSchema(BaseModel):
     recipientUid: str
@@ -433,7 +434,7 @@ async def admin_create_user(data: UserRegisterSchema, authorization: str = Heade
             "lastName": data.lastName,
             "fullName": f"{data.firstName} {data.lastName}",
             "username": data.username,
-            "role": "user",
+            "role": data.role, # CHANGED: Now properly saves 'user' or 'personnel'
             "status": "offline",
             "dateCreated": get_ph_time()
         })
