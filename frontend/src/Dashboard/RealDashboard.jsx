@@ -12,7 +12,7 @@ import {
   Droplets, Beaker, Syringe, Tablet, Sun as SunIcon, Calculator
 } from 'lucide-react';
 import { auth, db } from '../firebase'; 
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, update } from 'firebase/database';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, Legend,
@@ -204,7 +204,7 @@ const PenMetricCard = ({ title, count, capacity, chartData }) => {
                         {count > 0 ? count.toLocaleString() : '0'} <span className="text-[10px] font-normal text-gray-400">heads</span>
                     </h3>
                     <div className="w-full bg-gray-100 h-1 mt-2 rounded-full overflow-hidden">
-                        <div className="bg-indigo-500 h-full" style={{ width: `${count > 0 ? Math.min((count / capacity) * 100, 100) : 0}%` }}></div>
+                        <div className="bg-indigo-500 h-full" style={{ width: `${capacity > 0 ? Math.min((count / capacity) * 100, 100) : 0}%` }}></div>
                     </div>
                 </div>
             </div>
@@ -367,9 +367,16 @@ const RealDashboard = ({ onNavigate }) => {
             });
           }
           
+          // Handle Both Format types robustly for Mortality
           if (firstActive.mortality_logs) {
-            Object.values(firstActive.mortality_logs).forEach(log => {
-              totalMortality += (Number(log.am || 0) + Number(log.pm || 0));
+            Object.entries(firstActive.mortality_logs).forEach(([key, value]) => {
+              if (key.toLowerCase().includes('pen')) {
+                Object.values(value).forEach(log => {
+                  totalMortality += (Number(log.am || 0) + Number(log.pm || 0));
+                });
+              } else {
+                totalMortality += (Number(value.am || 0) + Number(value.pm || 0));
+              }
             });
           }
           
@@ -693,19 +700,126 @@ const RealDashboard = ({ onNavigate }) => {
     getForecasts();
   }, [activeBatch, currentUser]);
 
+  // ==============================================================
+  // AUTO-INITIALIZE PEN POPULATIONS IN DATABASE
+  // ==============================================================
+  useEffect(() => {
+    if (activeBatch && activeBatch.id && !activeBatch.pen_populations && activeBatch.startingPopulation > 0) {
+      const penCount = activeBatch.penCount || 5;
+      const startingPop = parseInt(activeBatch.startingPopulation);
+      const perPenPop = Math.floor(startingPop / penCount);
+      const remainder = startingPop % penCount;
+      const newPenPopulations = {};
+      
+      for (let i = 1; i <= penCount; i++) {
+        newPenPopulations[`pen_${i}`] = i <= remainder ? perPenPop + 1 : perPenPop;
+      }
+
+      update(ref(db, `global_batches/${activeBatch.id}`), {
+        pen_populations: newPenPopulations
+      }).then(() => {
+        console.log("Successfully Auto-Saved Pen Populations to Firebase:", newPenPopulations);
+      }).catch(err => console.error("Failed to auto-init pen populations:", err));
+    }
+  }, [activeBatch]);
+
+  // ==============================================================
+  // MANUALLY SYNC BUTTON (FORCES DATABASE UPDATE OF POPULATIONS)
+  // ==============================================================
+  const distributeAndSavePenForecast = async () => {
+    if (!activeBatch || !activeBatch.id) return;
+    try {
+      const penCount = activeBatch.penCount || 5;
+      const startingPop = parseInt(activeBatch.startingPopulation || 0);
+      const updates = {};
+      
+      // 1. ALWAYS CALCULATE AND SAVE PEN POPULATIONS
+      const perPenPop = Math.floor(startingPop / penCount);
+      const remainder = startingPop % penCount;
+      const newPenPopulations = {};
+      
+      for (let i = 1; i <= penCount; i++) {
+        newPenPopulations[`pen_${i}`] = i <= remainder ? perPenPop + 1 : perPenPop;
+      }
+      updates.pen_populations = newPenPopulations;
+
+      // 2. ONLY DO FORECASTS IF THEY EXIST
+      if (forecastData && forecastData.length > 0) {
+        const newPenForecasts = {};
+        forecastData.forEach(f => {
+          const dayStr = f.day.toString().replace('Day ', '');
+          const perPenFeed = (f.targetKilos || 0) / penCount;
+          newPenForecasts[`day_${dayStr}`] = {};
+          for (let i = 1; i <= penCount; i++) {
+            newPenForecasts[`day_${dayStr}`][`pen_${i}`] = {
+              targetKilos: Number(perPenFeed.toFixed(2)),
+              feedType: f.feedType || 'Booster'
+            };
+          }
+        });
+        updates.pen_forecasts = newPenForecasts;
+      }
+
+      await update(ref(db, `global_batches/${activeBatch.id}`), updates);
+      alert("Success: Pen Populations perfectly synced to database!");
+    } catch (error) {
+      console.error("Error saving pen forecasts:", error);
+      alert("Error: Failed to save to database.");
+    }
+  };
+
+  // ==============================================================
+  // OVERWRITE POPULATION ON SETTINGS UPDATE
+  // ==============================================================
   const handleUpdateSettings = async () => {
       if(!activeBatch) return;
       try {
           const token = await currentUser.getIdToken();
+          const newPenCount = parseInt(settings.pens);
+          const newPopulation = parseInt(settings.population);
+          const updates = {};
+
+          // Update backend config first
           await fetch(`${backendUrl}/update-batch-settings/${activeBatch.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ 
-                  startingPopulation: parseInt(settings.population), 
-                  penCount: parseInt(settings.pens), 
+                  startingPopulation: newPopulation, 
+                  penCount: newPenCount, 
                   averageChickWeight: parseFloat(settings.weight) 
               })
           });
+
+          // 1. RECALCULATE AND OVERWRITE PEN POPULATIONS ON SETTING CHANGE
+          const perPenPop = Math.floor(newPopulation / newPenCount);
+          const remainder = newPopulation % newPenCount;
+          const newPenPopulations = {};
+          
+          for (let i = 1; i <= newPenCount; i++) {
+            newPenPopulations[`pen_${i}`] = i <= remainder ? perPenPop + 1 : perPenPop;
+          }
+          updates.pen_populations = newPenPopulations;
+
+          // 2. RECALCULATE FORECASTS IF THEY EXIST
+          if (forecastData && forecastData.length > 0) {
+            const newPenForecasts = {};
+            forecastData.forEach(f => {
+              const dayStr = f.day.toString().replace('Day ', '');
+              const perPenFeed = (f.targetKilos || 0) / newPenCount;
+              newPenForecasts[`day_${dayStr}`] = {};
+              for (let i = 1; i <= newPenCount; i++) {
+                newPenForecasts[`day_${dayStr}`][`pen_${i}`] = {
+                  targetKilos: Number(perPenFeed.toFixed(2)),
+                  feedType: f.feedType || 'Booster'
+                };
+              }
+            });
+            updates.pen_forecasts = newPenForecasts;
+          }
+
+          // PUSH TO FIREBASE
+          await update(ref(db, `global_batches/${activeBatch.id}`), updates);
+          
           setShowSettingsModal(false);
       } catch(err) { console.error(err); }
   };
@@ -742,13 +856,32 @@ const RealDashboard = ({ onNavigate }) => {
       const start = new Date(startYear, startMonth - 1, startDay);
       const daily = [];
       let currentPop = activeBatch.startingPopulation;
+      
       for (let i = 0; i < 30; i++) {
           const date = new Date(start); 
           date.setDate(date.getDate() + i); 
           const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-          const mort = activeBatch.mortality_logs?.[dateStr] ? (Number(activeBatch.mortality_logs[dateStr].am||0) + Number(activeBatch.mortality_logs[dateStr].pm||0)) : 0;
+          const alternateDateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`; // "M/D/YYYY"
+
+          // Robust check for mortality inside nested pen folders
+          let mort = 0;
+          if (activeBatch.mortality_logs) {
+              Object.entries(activeBatch.mortality_logs).forEach(([key, value]) => {
+                  if (key.toLowerCase().includes('pen')) {
+                      Object.values(value).forEach(log => {
+                          if (log.dateLabel === alternateDateStr || log.dateLabel === dateStr) {
+                              mort += (Number(log.am || 0) + Number(log.pm || 0));
+                          }
+                      });
+                  } else if (key === dateStr) { // legacy format check
+                      mort += (Number(value.am || 0) + Number(value.pm || 0));
+                  }
+              });
+          }
+
           const feed = activeBatch.feed_logs?.[dateStr] ? (Number(activeBatch.feed_logs[dateStr].am||0) + Number(activeBatch.feed_logs[dateStr].pm||0)) : 0;
           const vit = activeBatch.daily_vitamin_logs?.[dateStr] ? (Number(activeBatch.daily_vitamin_logs[dateStr].am_amount||0) + Number(activeBatch.daily_vitamin_logs[dateStr].pm_amount||0)) : 0;
+          
           currentPop -= mort;
           daily.push({ day: i + 1, mortality: mort, population: currentPop, feed, vitamins: vit });
       }
@@ -763,12 +896,61 @@ const RealDashboard = ({ onNavigate }) => {
       return { daily, weekly };
   }, [activeBatch]);
 
+  // ==============================================================
+  // REVISED PEN DISTRIBUTION - NOW ONLY USES 'pen_populations'
+  // ==============================================================
   const penDistribution = useMemo(() => {
     if (!activeBatch) return [];
-    const currentPopulationCount = (activeBatch.startingPopulation || 0) - stats.mortality - stats.qtyHarvested;
-    if (currentPopulationCount <= 0) return [];
     
     const penCount = activeBatch.penCount || 5; 
+    const startingPop = activeBatch.startingPopulation || 1;
+    
+    // IF database has the saved pen populations, USE THEM directly for the UI
+    if (activeBatch.pen_populations) {
+      return Array.from({ length: penCount }, (_, i) => {
+          const penIndex = i + 1;
+          const penKeyExact = `pen_${penIndex}`;
+          
+          // 🚨 FIX: We simply use the value straight from Firebase because your Add Mortality 
+          // logic is already deducting the deaths directly from pen_populations in the database!
+          const currentHeads = activeBatch.pen_populations[penKeyExact] || 0;
+          
+          // We still calculate penMortality strictly for displaying the mini stats box inside the card
+          let penMortality = 0;
+          if (activeBatch.mortality_logs) {
+              const possibleKeys = [
+                  `pen_${penIndex}`, `Pen_${penIndex}`, `pen ${penIndex}`, `Pen ${penIndex}`
+              ];
+              possibleKeys.forEach(key => {
+                  if (activeBatch.mortality_logs[key]) {
+                      Object.values(activeBatch.mortality_logs[key]).forEach(log => {
+                          penMortality += (Number(log.am || 0) + Number(log.pm || 0));
+                      });
+                  }
+              });
+          }
+
+          // Ratio for distributing feeds and vitamins evenly to this pen based on live count
+          const liveTotal = startingPop - stats.mortality;
+          const ratio = currentHeads > 0 && liveTotal > 0 ? (currentHeads / liveTotal) : 0;
+
+          return {
+              id: penIndex,
+              count: currentHeads, // Uses the exact DB value without double-deducting
+              capacity: Math.ceil(startingPop / penCount), // Original Capacity
+              stats: [
+                  { name: 'Mort.', value: penMortality || 0, color: '#ef4444' }, 
+                  { name: 'Feed', value: Math.round(stats.totalFeedKilos * ratio) || 0, color: '#f97316' }, 
+                  { name: 'Vits', value: Math.round(stats.totalVitaminGrams * ratio) || 0, color: '#10b981' } 
+              ]
+          };
+      });
+    }
+
+    // Fallback if DB doesn't have pen_populations yet (e.g., before syncing)
+    const currentPopulationCount = startingPop - stats.mortality - stats.qtyHarvested;
+    if (currentPopulationCount <= 0) return [];
+    
     const basePerPen = Math.floor(currentPopulationCount / penCount);
     const remainder = currentPopulationCount % penCount;
     
@@ -778,7 +960,7 @@ const RealDashboard = ({ onNavigate }) => {
         return {
             id: i + 1,
             count: heads,
-            capacity: Math.ceil((activeBatch.startingPopulation || 0) / penCount),
+            capacity: Math.ceil(startingPop / penCount),
             stats: [
                 { name: 'Mort.', value: Math.round(stats.mortality * ratio) || 0, color: '#ef4444' }, 
                 { name: 'Feed', value: Math.round(stats.totalFeedKilos * ratio) || 0, color: '#f97316' }, 
@@ -794,7 +976,17 @@ const RealDashboard = ({ onNavigate }) => {
     if (batch.expenses) Object.values(batch.expenses).forEach(e => expenses += Number(e.amount || 0));
     if (batch.sales) Object.values(batch.sales).forEach(s => { sales += Number(s.totalAmount || 0); harvestQty += Number(s.quantity || 0); });
     if (batch.feed_logs) Object.values(batch.feed_logs).forEach(f => feedKilos += (Number(f.am || 0) + Number(f.pm || 0)));
-    if (batch.mortality_logs) Object.values(batch.mortality_logs).forEach(m => mort += (Number(m.am || 0) + Number(m.pm || 0)));
+    
+    if (batch.mortality_logs) {
+      Object.entries(batch.mortality_logs).forEach(([key, value]) => {
+        if (key.toLowerCase().includes('pen')) {
+          Object.values(value).forEach(log => { mort += (Number(log.am || 0) + Number(log.pm || 0)); });
+        } else {
+          mort += (Number(value.am || 0) + Number(value.pm || 0));
+        }
+      });
+    }
+    
     if (batch.weight_logs) { const w = Object.values(batch.weight_logs).sort((a,b) => b.day - a.day); if(w.length > 0) weight = Number(w[0].averageWeight || 0); }
     return { 
       name: batch.batchName, 
@@ -847,7 +1039,15 @@ const RealDashboard = ({ onNavigate }) => {
             let exp = 0, sale = 0, mort = 0;
             if (b.expenses) Object.values(b.expenses).forEach(e => exp += Number(e.amount || 0));
             if (b.sales) Object.values(b.sales).forEach(s => sale += Number(s.totalAmount || 0));
-            if (b.mortality_logs) Object.values(b.mortality_logs).forEach(m => mort += (Number(m.am || 0) + Number(m.pm || 0)));
+            if (b.mortality_logs) {
+              Object.entries(b.mortality_logs).forEach(([key, value]) => {
+                if (key.toLowerCase().includes('pen')) {
+                  Object.values(value).forEach(log => { mort += (Number(log.am || 0) + Number(log.pm || 0)); });
+                } else {
+                  mort += (Number(value.am || 0) + Number(value.pm || 0));
+                }
+              });
+            }
             return { 
               name: b.batchName, 
               income: sale - exp, 
@@ -1162,7 +1362,14 @@ const RealDashboard = ({ onNavigate }) => {
                         <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Hover to see details</p>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5 text-[10px]">
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <button
+                        onClick={distributeAndSavePenForecast}
+                        className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg border border-emerald-700 font-bold transition-all mr-2"
+                        title="Force division of forecast by pens (Updates Database)"
+                    >
+                        <Save size={12} /> Sync Pen Targets
+                    </button>
                     <div className="px-2 py-1 bg-green-50 rounded-lg border border-green-100"><span className="block text-[8px] font-bold text-green-600 uppercase">Booster</span><span className="font-black text-gray-700">{feedBreakdown.Booster.toFixed(1)}</span></div>
                     <div className="px-2 py-1 bg-emerald-50 rounded-lg border border-emerald-100"><span className="block text-[8px] font-bold text-emerald-600 uppercase">Starter</span><span className="font-black text-gray-700">{feedBreakdown.Starter.toFixed(1)}</span></div>
                     <div className="px-2 py-1 bg-yellow-50 rounded-lg border border-yellow-100"><span className="block text-[8px] font-bold text-yellow-600 uppercase">Finisher</span><span className="font-black text-gray-700">{feedBreakdown.Finisher.toFixed(1)}</span></div>

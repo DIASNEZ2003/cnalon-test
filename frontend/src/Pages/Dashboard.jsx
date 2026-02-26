@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from "../firebase";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { getDatabase, ref, update, get, onValue } from "firebase/database";
+import { getDatabase, ref, update, get, onValue, onDisconnect } from "firebase/database";
 import { supabase } from "../supabaseClient";
 
 // Import your sub-components
@@ -123,7 +123,7 @@ const Dashboard = () => {
     };
   }, []);
 
-  // --- USER AUTH & PROFILE SYNC ---
+  // --- USER AUTH & PROFILE SYNC & ONLINE STATUS ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -131,6 +131,7 @@ const Dashboard = () => {
         try {
           const db = getDatabase();
           const snapshot = await get(ref(db, `users/${currentUser.uid}`));
+          
           if (snapshot.exists()) {
             const data = snapshot.val();
             setProfileImage(data.profileImage || null);
@@ -138,6 +139,29 @@ const Dashboard = () => {
             const displayValue = data.fullName || data.firstName || nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
             setFullName(displayValue);
           }
+
+          // =========================================================
+          // NEW: REAL-TIME FIREBASE PRESENCE (ONLINE/OFFLINE STATUS)
+          // =========================================================
+          const myStatusRef = ref(db, `users/${currentUser.uid}`);
+          const connectedRef = ref(db, ".info/connected");
+
+          onValue(connectedRef, (snap) => {
+            if (snap.val() === true) {
+              // Tell Firebase: "When my browser tab closes, set me offline instantly"
+              onDisconnect(myStatusRef).update({
+                status: "offline",
+                lastSeen: Date.now()
+              }).then(() => {
+                // After setting up the disconnect rule, forcefully update to online!
+                update(myStatusRef, {
+                  status: "online",
+                  lastSeen: Date.now()
+                });
+              });
+            }
+          });
+
         } catch (error) {
           console.error("User data fetch error:", error);
         }
@@ -148,6 +172,14 @@ const Dashboard = () => {
 
   const confirmLogout = async () => {
     try {
+      if (user) {
+        const db = getDatabase();
+        // Force offline status manually when clicking log out
+        await update(ref(db, `users/${user.uid}`), {
+          status: "offline",
+          lastSeen: Date.now()
+        });
+      }
       await signOut(auth);
     } catch (error) {
       console.error(error);

@@ -18,6 +18,118 @@ const formatTime = (timestamp) => {
   return isToday ? timeStr : `${date.toLocaleDateString([], { month: 'short', day: 'numeric'})}, ${timeStr}`;
 };
 
+// --- COMPONENT: FULLSCREEN IMAGE VIEWER ---
+const ImageViewerModal = ({ imageUrl, onClose }) => {
+  if (!imageUrl) return null;
+  return (
+    <div 
+      className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 animate-fade-in" 
+      onClick={onClose}
+    >
+      <button 
+        onClick={onClose} 
+        className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors bg-black/50 hover:bg-black/80 p-2 rounded-full z-50"
+      >
+        <X size={24} />
+      </button>
+      <img 
+        src={imageUrl} 
+        alt="Fullscreen View" 
+        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white" 
+        onClick={(e) => e.stopPropagation()} 
+      />
+    </div>
+  );
+};
+
+// --- COMPONENT: IN-SYSTEM DOCUMENT VIEWER ---
+const DocumentViewerModal = ({ documentInfo, onClose }) => {
+  if (!documentInfo) return null;
+
+  const { url, type, name } = documentInfo;
+  const isPdf = type?.includes('pdf');
+  const isOffice = type?.includes('document') || type?.includes('msword') || 
+                   type?.includes('sheet') || type?.includes('excel') || 
+                   type?.includes('presentation') || type?.includes('powerpoint');
+
+  // Use Google Docs Viewer iframe for Office files, native iframe for PDFs
+  let viewerUrl = url;
+  if (isOffice) {
+    viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/80 flex flex-col items-center justify-center p-4 md:p-8 animate-fade-in">
+      <div className="w-full max-w-5xl h-full flex flex-col bg-white rounded-xl shadow-2xl overflow-hidden relative">
+        
+        {/* Header */}
+        <div className="bg-gray-100 p-3 flex justify-between items-center border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+              <FileText size={16} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-gray-800 tracking-wide truncate max-w-xs">{name || "Document Viewer"}</h3>
+              <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">{isPdf ? "PDF Document" : "Office Document"}</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-gray-200 text-gray-500 hover:text-red-600 rounded-full transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Iframe Container */}
+        <div className="flex-1 w-full bg-gray-50 relative">
+          <iframe 
+            src={viewerUrl} 
+            className="w-full h-full border-none absolute inset-0"
+            title="Document Viewer"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- COMPONENT: REAL-TIME STATUS BADGE ---
+const UserStatusBadge = ({ uid, initialStatus, initialLastSeen }) => {
+  const [status, setStatus] = useState(initialStatus || 'offline');
+  const [lastSeen, setLastSeen] = useState(initialLastSeen || null);
+
+  useEffect(() => {
+    const db = getDatabase();
+    const statusRef = ref(db, `users/${uid}`);
+    const unsub = onValue(statusRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.val();
+        setStatus(data.status || 'offline');
+        setLastSeen(data.lastSeen || null);
+      }
+    });
+    return () => unsub();
+  }, [uid]);
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${
+          status === 'online' 
+          ? 'bg-green-50 text-green-700 border-green-100' 
+          : 'bg-gray-100 text-gray-500 border-gray-200'
+      }`}>
+          {status === 'online' ? 'Online Now' : 'Offline'}
+      </span>
+      {status === 'offline' && lastSeen && (
+        <span className="text-[8px] text-gray-400 font-bold tracking-wide">
+          Last seen: {formatTime(lastSeen)}
+        </span>
+      )}
+    </div>
+  );
+};
+
 // --- COMPONENT: PASSWORD INPUT ---
 const PasswordInput = ({ label, value, onChange, placeholder }) => {
   const [show, setShow] = useState(false);
@@ -108,7 +220,7 @@ const ConfirmModal = ({ isOpen, type, onConfirm, onCancel }) => {
 };
 
 // --- COMPONENT: MESSENGER MODAL ---
-const MessengerModal = ({ isOpen, onClose, targetUser }) => {
+const MessengerModal = ({ isOpen, onClose, targetUser, onViewImage, onViewDocument }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [msgToDelete, setMsgToDelete] = useState(null); 
@@ -125,6 +237,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
     if (!isOpen || !targetUser) return;
     const db = getDatabase();
     
+    // Listen directly to the user's online status
     const statusRef = ref(db, `users/${targetUser.uid}/status`);
     const unsubStatus = onValue(statusRef, (snap) => {
         setLiveStatus(snap.val() || "offline");
@@ -146,7 +259,8 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
 
         const updates = {};
         Object.keys(data).forEach(id => {
-            if (data[id].sender === 'user' && data[id].seen !== true) {
+            // Mark incoming messages as seen
+            if ((data[id].sender === targetUser.uid || data[id].sender === 'tech') && data[id].seen !== true) {
                 updates[`chats/${targetUser.uid}/${id}/seen`] = true;
                 updates[`chats/${targetUser.uid}/${id}/status`] = 'seen';
             }
@@ -219,10 +333,11 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
       
       const payload = {
         sender: "admin",
+        senderUid: user.uid,
         text: currentInput,
         timestamp: sendTimestamp, 
         seen: false,
-        status: "delivered"
+        status: liveStatus === 'online' ? "delivered" : "sent"
       };
 
       if (publicUrl) {
@@ -243,6 +358,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
 
   const handleDownload = async (e, url, filename) => {
     e.preventDefault(); 
+    e.stopPropagation();
     try {
       const response = await fetch(url);
       const blob = await response.blob();
@@ -259,6 +375,15 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
       console.error("Download failed, opening in new tab instead", error);
       window.open(url, '_blank'); 
     }
+  };
+
+  // --- NEW: View Document inside the system ---
+  const openDocument = (e, url, fileType, fileName) => {
+    e.preventDefault(); 
+    e.stopPropagation();
+    if (!url) return;
+    // Trigger the modal state passed from the parent (User.jsx)
+    onViewDocument({ url, type: fileType, name: fileName });
   };
 
   const deleteMessage = async () => {
@@ -314,9 +439,14 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
         {/* Header */}
         <div className="bg-[#3B0A0A] p-4 flex items-center justify-between shadow-md z-10">
           <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white font-bold border border-white/20 overflow-hidden">
+            <div className={`relative w-10 h-10 rounded-full flex items-center justify-center text-white font-bold border border-white/20 overflow-hidden ${targetUser.profilePicture ? 'bg-white' : 'bg-white/10'}`}>
               {targetUser.profilePicture ? (
-                <img src={targetUser.profilePicture} className="w-full h-full object-cover" alt="" />
+                <img 
+                  src={targetUser.profilePicture} 
+                  className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                  alt="Profile" 
+                  onClick={() => onViewImage(targetUser.profilePicture)}
+                />
               ) : (
                 (targetUser.username || "U").charAt(0).toUpperCase()
               )}
@@ -349,7 +479,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
             </div>
           ) : (
             messages.map((m) => {
-              const isAdmin = m.sender === 'admin';
+              const isAdmin = m.sender === 'admin' || m.senderUid === auth.currentUser?.uid;
               
               if (!m.text?.trim() && !m.attachmentUrl) return null;
 
@@ -364,18 +494,30 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
                         <div className={`${m.text?.trim() ? 'mb-2' : ''}`}>
                           {m.attachmentType?.startsWith('image/') ? (
                             <div 
-                              onClick={(e) => handleDownload(e, m.attachmentUrl, m.attachmentName)}
-                              className="relative group/img cursor-pointer block rounded-xl overflow-hidden shadow-sm border border-white/10" 
-                              title="Click to download image"
+                              className="relative group/img block rounded-xl overflow-hidden shadow-sm border border-white/10" 
                             >
-                              <img src={m.attachmentUrl} alt="attachment" className="max-w-[200px] max-h-[200px] object-cover" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                  <Download className="text-white h-8 w-8 drop-shadow-md" />
+                              <img 
+                                src={m.attachmentUrl} 
+                                alt="attachment" 
+                                className="max-w-[200px] max-h-[200px] object-contain bg-white cursor-pointer hover:opacity-90 transition-opacity" 
+                                onClick={() => onViewImage(m.attachmentUrl)}
+                                title="Click to view full image"
+                              />
+                              {/* Hover Download Button */}
+                              <div className="absolute top-1 right-1 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                <button 
+                                  onClick={(e) => handleDownload(e, m.attachmentUrl, m.attachmentName)}
+                                  className="p-1.5 bg-black/60 hover:bg-black/80 rounded-lg text-white backdrop-blur-sm transition-colors shadow-lg"
+                                  title="Download Image"
+                                >
+                                  <Download size={14} />
+                                </button>
                               </div>
                             </div>
                           ) : (
+                            // --- USE IN-SYSTEM DOCUMENT VIEWER ON CLICK ---
                             <div 
-                              onClick={(e) => handleDownload(e, m.attachmentUrl, m.attachmentName)}
+                              onClick={(e) => openDocument(e, m.attachmentUrl, m.attachmentType, m.attachmentName)}
                               className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer shadow-sm border transition-all duration-200 w-56 sm:w-64 select-none ${
                                 isAdmin 
                                   ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' 
@@ -393,7 +535,7 @@ const MessengerModal = ({ isOpen, onClose, targetUser }) => {
                                   </span>
                                   <span className={isAdmin ? 'text-white/40' : 'text-gray-300'}>•</span>
                                   <span className={`text-[9px] font-bold ${isAdmin ? 'text-white/70' : 'text-gray-500'}`}>
-                                    Click to download
+                                    Tap to read
                                   </span>
                                 </div>
                               </div>
@@ -507,6 +649,10 @@ const User = () => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, type: null, targetId: null });
   const [loading, setLoading] = useState(true);
   
+  // Image Viewer & Document Viewer State
+  const [viewingImage, setViewingImage] = useState(null);
+  const [viewingDocument, setViewingDocument] = useState(null);
+  
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   
   // Edit Modal State
@@ -517,6 +663,7 @@ const User = () => {
 
   const [searchTerm, setSearchTerm] = useState("");
   
+  // Default tab to 'user' to match DB, but label it "Technicians" in the UI
   const [activeRoleTab, setActiveRoleTab] = useState('user');
 
   const [formData, setFormData] = useState({ 
@@ -550,7 +697,7 @@ const User = () => {
             Object.keys(data).forEach(uid => {
                 const userMessages = data[uid];
                 if (userMessages) {
-                    const count = Object.values(userMessages).filter(m => m.sender === 'user' && !m.seen).length;
+                    const count = Object.values(userMessages).filter(m => m.sender !== 'admin' && !m.seen).length;
                     counts[uid] = count;
                 }
             });
@@ -564,10 +711,6 @@ const User = () => {
   const requestCreate = (e) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) { alert("Passwords do not match!"); return; }
-    
-    // DEBUG: Ensure we are sending the correct role!
-    console.log("Submitting User with Role:", formData.role);
-    
     setConfirmModal({ isOpen: true, type: 'create', targetId: null });
   };
 
@@ -653,6 +796,7 @@ const User = () => {
     const dbRole = (u.role || '').toLowerCase();
     const isNotAdmin = dbRole !== 'admin';
     
+    // Map any generic db role to 'user' so it shows up in the Technician tab
     const effectiveRole = (dbRole === 'personnel' || dbRole === 'staff') ? 'personnel' : 'user';
     const matchesTab = effectiveRole === activeRoleTab;
 
@@ -669,8 +813,20 @@ const User = () => {
 
   return (
     <div className="bg-gray-50 h-full w-full p-6 animate-fade-in font-sans text-gray-800">
+      
+      {/* Global Image & Document Viewer Modals */}
+      <ImageViewerModal imageUrl={viewingImage} onClose={() => setViewingImage(null)} />
+      <DocumentViewerModal documentInfo={viewingDocument} onClose={() => setViewingDocument(null)} />
+
       <SuccessModal message={successMessage} onClose={() => setSuccessMessage('')} />
-      <MessengerModal isOpen={!!chatUser} onClose={() => setChatUser(null)} targetUser={chatUser} />
+      
+      <MessengerModal 
+        isOpen={!!chatUser} 
+        onClose={() => setChatUser(null)} 
+        targetUser={chatUser} 
+        onViewImage={setViewingImage}
+        onViewDocument={setViewingDocument}
+      />
       <ConfirmModal isOpen={confirmModal.isOpen} type={confirmModal.type} onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })} onConfirm={performAction} />
 
       {/* --- TOP TABS --- */}
@@ -748,16 +904,24 @@ const User = () => {
                 <tr><td colSpan="4" className="py-20 text-center text-gray-300 text-xs font-medium uppercase tracking-widest">No {activeRoleTab === 'user' ? 'technicians' : 'personnel'} found</td></tr>
               ) : filteredUsers.map((u) => {
                 const unread = unreadCounts[u.uid] || 0;
+                
                 return (
                   <tr key={u.uid} className="hover:bg-gray-50/40 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="relative w-9 h-9 rounded-full bg-gray-100 flex-shrink-0 border border-gray-200 overflow-hidden">
+                        {/* Removed background color if picture exists */}
+                        <div className={`relative w-9 h-9 rounded-full flex-shrink-0 border border-gray-200 overflow-hidden ${u.profilePicture ? 'bg-white' : 'bg-gray-100'}`}>
                           {u.profilePicture ? (
-                              <img src={u.profilePicture} className="w-full h-full object-cover" alt="" />
+                              <img 
+                                src={u.profilePicture} 
+                                className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                                alt="Profile" 
+                                onClick={() => setViewingImage(u.profilePicture)} 
+                                title="Click to view full image"
+                              />
                           ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-400 font-black text-xs">
-                                  {(u.username || "U").charAt(0).toUpperCase()}
+                                  {(u.username || u.firstName || "U").charAt(0).toUpperCase()}
                               </div>
                           )}
                         </div>
@@ -769,13 +933,7 @@ const User = () => {
                     </td>
 
                     <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter border ${
-                            u.status === 'online' 
-                            ? 'bg-green-50 text-green-700 border-green-100' 
-                            : 'bg-gray-100 text-gray-500 border-gray-200'
-                        }`}>
-                            {u.status === 'online' ? 'Online Now' : 'Offline'}
-                        </span>
+                        <UserStatusBadge uid={u.uid} initialStatus={u.status} initialLastSeen={u.lastSeen} />
                     </td>
 
                     <td className="px-6 py-4">
@@ -921,7 +1079,7 @@ const User = () => {
                 />
                 <div 
                   onClick={() => profileFileInputRef.current?.click()}
-                  className="relative w-20 h-20 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-red-900 hover:bg-gray-50 transition-all group overflow-hidden shadow-sm"
+                  className="relative w-20 h-20 rounded-full bg-white border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-red-900 hover:bg-gray-50 transition-all group overflow-hidden shadow-sm"
                 >
                   {uploadingImage ? (
                     <Loader2 className="animate-spin text-[#3B0A0A]" size={24} />
